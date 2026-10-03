@@ -1,5 +1,28 @@
 # GitHub account router
 
+## Set it up with your coding agent
+
+Give this prompt to a coding agent with terminal access to the machine where your repositories live:
+
+```text
+Set up GitHub account router on this machine. Fetch and follow:
+https://raw.githubusercontent.com/Sma-Das/multi-github-account/main/setup.md
+
+Install ghr, discover my signed-in GitHub accounts and workspace repositories,
+map my chosen folders to the right accounts, configure HTTPS Git routing,
+verify account selection and remote access, and start the dashboard.
+If I want remote access through Tailscale, configure Tailscale Serve and give
+me the full HTTPS dashboard session URL.
+
+Carry out the setup rather than just explaining it. Ask me only for missing
+folder-to-account choices or steps that require my browser login or Tailscale
+enablement. Use repository-scoped credentials instead of gh auth switch,
+keep GitHub tokens out of output, and finish with my actual mappings,
+verification results, dashboard URL, and agent launch commands.
+```
+
+Include your workspace paths and desired account mappings with the prompt to reduce questions. The full agent setup guide is in [setup.md](setup.md).
+
 `ghr` routes GitHub authentication by local folder. Agents in different repositories can push and call the GitHub API at the same time, using different accounts, without running `gh auth switch`.
 
 The CLI includes a local web dashboard for assigning folders and inspecting upstream remotes. It uses accounts already signed into GitHub CLI. There are no runtime Python dependencies.

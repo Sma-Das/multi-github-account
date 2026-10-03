@@ -1,27 +1,75 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark light">
   <title>GitHub account router</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header><a class="brand" href="/">ghr<span> / account router</span></a><span class="local"><i></i> LOCAL SESSION</span></header>
-  <main>
-    <div class="intro"><div><p class="eyebrow">ONE MACHINE. MULTIPLE IDENTITIES.</p><h1>Every repo gets<br>the right account.</h1><p class="lede">Map your folders once. Let your agents work at the same time.</p></div><div class="route-diagram" aria-hidden="true"><div>~/work/personal <span>→</span> @personal</div><div>~/work/company <span>→</span> @work</div><small>Independent credentials. No account switching.</small></div></div>
-    <div id="notice" role="status" aria-live="polite" hidden></div>
-    <section aria-labelledby="accounts-title"><div class="section-heading"><h2 id="accounts-title">Signed-in accounts <span id="account-count" class="count">0</span></h2><button id="refresh" class="quiet">Refresh ↻</button></div><div id="accounts" class="accounts"><p class="muted">Loading accounts…</p></div><p class="hint">Accounts come from GitHub CLI. Add another in your terminal with <code>gh auth login</code>. Tokens stay in its credential store.</p></section>
-    <section aria-labelledby="mappings-title"><div class="section-heading"><h2 id="mappings-title">Folder routes <span id="mapping-count" class="count">0</span></h2><span class="muted">Most specific folder wins</span></div>
-      <form id="mapping-form" class="mapping-form"><label>Folder or repository<input id="folder" placeholder="~/GitHub/my-repo" required autocomplete="off"></label><label>Route to account<select id="account" required><option value="">Choose an account</option></select></label><button type="submit" class="primary">Save route <span>↗</span></button></form>
-      <div class="table-wrap"><table><thead><tr><th>Folder</th><th>Account</th><th>Host</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="mappings"></tbody></table><p id="empty-mappings" class="empty" hidden>No routes yet. Add a repo or a parent folder above.</p></div>
-    </section>
-    <section aria-labelledby="scan-title"><div class="section-heading"><h2 id="scan-title">Find your repositories</h2><span class="muted">Includes upstream remotes</span></div><form id="scan-form" class="scan-form"><label class="sr-only" for="scan-path">Folder to scan</label><input id="scan-path" placeholder="~/GitHub" required><button type="submit" class="quiet" id="scan-button">Scan folders →</button></form><div id="repositories"><p class="muted">Scan a workspace to see its repos, remotes, and current routes.</p></div></section>
-    <section class="terminal-guide" aria-labelledby="agent-title"><div><p class="eyebrow">READY FOR YOUR AGENTS</p><h2 id="agent-title">Start with the right credentials.</h2><p>Each agent inherits its own account. Linked Git worktrees inherit their primary checkout's route.</p></div><div class="commands"><code>ghr exec --path ~/GitHub/my-repo -- claude</code><code>ghr gh --path ~/GitHub/my-repo -- pr create</code><code>ghr setup --global</code><p>The last command enables routing for ordinary HTTPS <code>git push</code> in all mapped folders. Unmapped folders will stop instead of using an unrelated account. SSH remotes need a separate SSH-key setup or a switch to HTTPS.</p></div></section>
-    <footer><span id="config-path">Local configuration</span><span>Nothing sent to a hosted dashboard.</span></footer>
-  </main>
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="7" r="2.5"/><path d="M6 7.5v9M8.5 17c6 0 9.5-3 9.5-7.5"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m6 9 3 3-3 3m6 0h6"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1-4-2-6-2m12 5v-4c0-1 .1-1.8-.5-2.5 4-.4 7-2 7-6a5 5 0 0 0-1.5-3.5 5 5 0 0 0-.2-3.5S18 2 15.5 3.5a13 13 0 0 0-7 0C6 2 4.2 2.5 4.2 2.5A5 5 0 0 0 4 6a5 5 0 0 0-1.5 3.5c0 4 3 5.6 7 6-.6.7-.5 1.5-.5 2.5v4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5m-3-6a8 8 0 0 1 13 2l1 4M4 12l1 4a8 8 0 0 0 13 2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M14 3h7v7m0-7L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-3 3 5 5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 13A9 9 0 0 1 11 3.5 9 9 0 1 0 20.5 13Z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+  </svg>
+
+  <a href="#main" class="skip-link">Skip to dashboard</a>
+  <button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="Close navigation" hidden></button>
+  <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+    <a class="brand" href="/" aria-label="GitHub account router home"><span class="brand-mark"><svg class="icon"><use href="#i-route"/></svg></span><span>ghr<span class="brand-subtitle">GitHub account router</span></span><span class="version">v0.1</span></a>
+    <div class="workspace-label"><span class="workspace-icon">W</span><div>My workspace<span>Account routing</span></div><span class="workspace-dot"></span></div>
+    <nav class="navigation" aria-label="Dashboard">
+      <p class="nav-label">Workspace</p>
+      <button class="nav-item active" data-view="overview" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg>Overview</button>
+      <button class="nav-item" data-view="routes"><svg class="icon"><use href="#i-route"/></svg>Folder routes<span id="nav-route-count" class="nav-count">0</span></button>
+      <button class="nav-item" data-view="repositories"><svg class="icon"><use href="#i-folder"/></svg>Repositories</button>
+      <p class="nav-label tools-label">Tools</p>
+      <button class="nav-item" data-view="agents"><svg class="icon"><use href="#i-terminal"/></svg>Agent setup</button>
+      <a class="nav-item" href="https://github.com/Sma-Das/multi-github-account/blob/main/setup.md" target="_blank" rel="noreferrer"><svg class="icon"><use href="#i-link"/></svg>Setup guide<svg class="icon external-icon"><use href="#i-link"/></svg></a>
+    </nav>
+    <div class="sidebar-bottom"><div class="credential-note"><svg class="icon"><use href="#i-shield"/></svg><div>Your credentials stay here.<span>Stored by GitHub CLI.</span></div></div><div class="sidebar-footer"><a href="https://github.com/Sma-Das/multi-github-account" target="_blank" rel="noreferrer"><svg class="icon"><use href="#i-github"/></svg>Source</a><button id="theme-toggle" class="icon-button" aria-label="Switch to light theme" title="Switch to light theme"><svg class="icon"><use href="#i-sun"/></svg></button></div></div>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar"><div class="breadcrumb"><button id="menu-toggle" class="icon-button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><span>Workspace</span><span class="breadcrumb-divider">/</span><span id="breadcrumb-current">Overview</span></div><div class="topbar-actions"><span class="session-badge"><span class="status-dot"></span><span id="session-label">Private session</span></span><button id="refresh" class="icon-button" aria-label="Refresh accounts and routes" title="Refresh accounts and routes"><svg class="icon"><use href="#i-refresh"/></svg></button></div></header>
+    <main id="main" tabindex="-1">
+      <div class="page-heading"><div><p class="eyebrow">GitHub workspace</p><h1 id="page-title">Account routing</h1><p id="page-description">Manage GitHub identities across repositories and agents.</p></div><button class="button primary" data-new-route><svg class="icon"><use href="#i-plus"/></svg>New route<kbd>N</kbd></button></div>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="dismiss-notice" class="icon-button" aria-label="Dismiss notification"><svg class="icon"><use href="#i-close"/></svg></button></div>
+
+      <div id="view-overview" class="view">
+        <div class="stats-grid overview-only" aria-label="Workspace summary"><div class="stat"><div class="stat-label">GitHub accounts<svg class="icon"><use href="#i-github"/></svg></div><div id="account-count" class="stat-value">—</div><p id="account-summary">Checking stored credentials</p></div><div class="stat"><div class="stat-label">Folder routes<svg class="icon"><use href="#i-route"/></svg></div><div id="mapping-count" class="stat-value">—</div><p>Repository and workspace mappings</p></div><div class="stat"><div class="stat-label">GitHub hosts<svg class="icon"><use href="#i-shield"/></svg></div><div id="host-count" class="stat-value">—</div><p id="host-summary">Hosts with stored accounts</p></div></div>
+        <section class="account-section overview-only" aria-labelledby="accounts-title"><div class="section-heading"><div><h2 id="accounts-title">GitHub accounts</h2><p>Stored identities available on this machine.</p></div><button id="copy-login" class="button subtle"><svg class="icon"><use href="#i-plus"/></svg>Add account</button></div><div id="accounts" class="accounts"><div class="loading-placeholder">Loading your accounts…</div></div></section>
+        <section class="routes-section" aria-labelledby="routes-title"><div class="section-heading"><div><h2 id="routes-title">Folder routes<span id="route-title-count" class="count">0</span></h2><p>Each folder uses its assigned account. More specific routes take priority.</p></div></div><div class="route-toolbar"><div id="account-filters" class="filter-tabs" aria-label="Filter routes by account"></div><label class="search-field"><svg class="icon"><use href="#i-search"/></svg><span class="sr-only">Search folder routes</span><input id="route-search" placeholder="Search routes…" autocomplete="off"><kbd>/</kbd></label></div><div class="table-wrap"><table><thead><tr><th>Folder</th><th>Account</th><th>Host</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="mappings"></tbody></table></div><div id="empty-mappings" class="empty-state" hidden><span class="empty-illustration"><svg class="icon"><use href="#i-route"/></svg></span><h3 id="empty-route-title">Your first route starts here.</h3><p id="empty-route-description">Assign a repository or workspace to a GitHub account.<br>Your agents will know which identity to use.</p><button class="button secondary" data-new-route><svg class="icon"><use href="#i-plus"/></svg>Create a route</button></div><div class="panel-footer"><span><svg class="icon"><use href="#i-shield"/></svg>Credentials are selected per repository.</span><button id="discover-link" class="text-button">Discover repositories<svg class="icon"><use href="#i-arrow"/></svg></button></div></section>
+        <div class="quick-start overview-only"><span class="quick-start-icon"><svg class="icon"><use href="#i-terminal"/></svg></span><div><h3>Launch agents with the right account.</h3><p>Start your agent with <code>ghr exec</code>. Its Git and GitHub commands inherit the right account.</p></div><button id="agent-link" class="button subtle">Agent setup<svg class="icon"><use href="#i-arrow"/></svg></button></div>
+      </div>
+
+      <div id="view-repositories" class="view" hidden><section class="scan-panel" aria-labelledby="scan-title"><div class="section-heading"><div><h2 id="scan-title">Discover repositories</h2><p>Scan a workspace to inspect upstream remotes and assign accounts.</p></div></div><form id="scan-form" class="scan-form"><label class="scan-input"><svg class="icon"><use href="#i-folder"/></svg><span class="sr-only">Folder to scan</span><input id="scan-path" placeholder="~/GitHub" required autocomplete="off"></label><button type="submit" class="button primary" id="scan-button"><svg class="icon"><use href="#i-search"/></svg><span>Scan workspace</span></button></form><div class="scan-meta"><span>5 levels deep</span><span>Up to 200 repositories</span><span id="scan-count">Not scanned yet</span></div><div id="repositories"><div class="empty-state"><span class="empty-illustration"><svg class="icon"><use href="#i-folder"/></svg></span><h3>Find the repos you work in.</h3><p>Choose a workspace folder above.<br>We'll find its repositories and show their current routes.</p></div></div></section></div>
+
+      <div id="view-agents" class="view" hidden><div class="agent-intro"><svg class="icon"><use href="#i-terminal"/></svg><div><h2>Independent agents. Independent accounts.</h2><p>Launch each agent in its repository. No shared account switching.</p></div></div><section class="command-panel" aria-labelledby="launch-title"><div class="section-heading"><div><h2 id="launch-title">Launch an agent</h2><p>Choose a saved route to generate a command for your workspace.</p></div></div><div class="command-fields"><label>Folder route<select id="agent-route"><option value="">Choose a route</option></select></label><label>Agent<select id="agent-executable"><option value="claude">Claude Code</option><option value="opencode">OpenCode</option><option value="codex">Codex</option><option value="grok">Grok</option></select></label></div><div class="code-block"><span class="terminal-prompt">$</span><code id="launch-command">ghr exec --path /path/to/repo -- claude</code><button id="copy-launch" class="icon-button" aria-label="Copy agent launch command" title="Copy command"><svg class="icon"><use href="#i-copy"/></svg></button></div><p class="command-hint">Child processes inherit the selected account. Linked worktrees inherit their primary checkout's route.</p></section><section class="command-panel" aria-labelledby="git-title"><div class="section-heading"><div><h2 id="git-title">Route ordinary Git commands</h2><p>Configure the current repository once, then use HTTPS Git as usual.</p></div></div><div class="code-block"><span class="terminal-prompt">$</span><code>ghr setup</code><button class="icon-button" data-copy="ghr setup" aria-label="Copy repository setup command"><svg class="icon"><use href="#i-copy"/></svg></button></div><p class="command-hint">For machine-wide routing, use <code>ghr setup --global</code>. Unmapped folders will stop instead of using an unrelated account. SSH remotes use SSH keys.</p></section></div>
+
+      <footer class="main-footer"><span><span class="status-dot"></span><span id="sync-status">Connecting to this machine</span></span><button id="config-location" class="text-button" title="Copy configuration file path"><svg class="icon"><use href="#i-folder"/></svg>Local configuration<svg class="icon"><use href="#i-copy"/></svg></button></footer>
+    </main>
+  </div>
+
+  <dialog id="route-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description"><div class="dialog-heading"><span class="dialog-icon"><svg class="icon"><use href="#i-route"/></svg></span><button id="close-dialog" class="icon-button" aria-label="Close route dialog"><svg class="icon"><use href="#i-close"/></svg></button></div><h2 id="dialog-title">Create a folder route</h2><p id="dialog-description">Choose which GitHub account this folder should use.</p><form id="mapping-form"><label>Folder or repository<input id="folder" placeholder="~/GitHub/my-repo" required autocomplete="off" autofocus></label><p class="field-hint">A parent folder also routes the repositories beneath it.</p><label>GitHub account<select id="account" required><option value="">Choose an account</option></select></label><p id="dialog-error" class="form-error" role="alert" hidden></p><div class="dialog-footer"><button id="cancel-dialog" type="button" class="button secondary">Cancel</button><button id="save-route" type="submit" class="button primary">Save route<svg class="icon"><use href="#i-arrow"/></svg></button></div></form></dialog>
 </body>
 </html>

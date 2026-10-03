@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+.env
+.env.*
+ghr/*.py
+ghr/__pycache__
+tests
+docs
+Formula
+demo/dist
+*.egg-info
+__pycache__

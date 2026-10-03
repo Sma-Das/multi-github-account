@@ -1,0 +1,11 @@
+{
+  "name": "github-account-router-demo",
+  "private": true,
+  "scripts": {
+    "build:demo": "node scripts/build-demo.mjs",
+    "test:demo": "node --test tests/demo.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

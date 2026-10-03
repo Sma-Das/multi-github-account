@@ -1,5 +1,7 @@
 # GitHub account router
 
+[Try the interactive demo](https://github-account-router-demo.vercel.app) · [Automatic setup guide](setup.md)
+
 ## Set it up with your coding agent
 
 Give this prompt to a coding agent with terminal access to the machine where your repositories live:
@@ -26,6 +28,14 @@ Include your workspace paths and desired account mappings with the prompt to red
 `ghr` routes GitHub authentication by local folder. Agents in different repositories can push and call the GitHub API at the same time, using different accounts, without running `gh auth switch`.
 
 The CLI includes a local web dashboard for assigning folders and inspecting upstream remotes. It uses accounts already signed into GitHub CLI. There are no runtime Python dependencies.
+
+## Interactive demo
+
+[Open the public demo](https://github-account-router-demo.vercel.app) to try the dashboard before installing. It starts with three sample GitHub accounts, six folder routes, and eight discoverable repositories.
+
+Add or edit routes, filter by account, scan sample workspaces, and generate agent launch commands. Changes are saved only in your browser. Use **Reset demo** to restore the sample data.
+
+The demo is a static Vercel deployment. It shares the local dashboard's UI but uses a browser-only mock API. It has no GitHub login, machine filesystem, credential store, or backend API.
 
 ## Why account switching races
 
@@ -233,6 +243,26 @@ ruby -c Formula/ghr.rb
 ```
 
 Tests invoke the real Git credential protocol with an offline `gh` fixture. They exercise concurrent account selection, ambient-token removal, linked worktrees, process pinning, concurrent mapping writes, enterprise tokens, and dashboard authorization. They do not contact GitHub or push real branches.
+
+### Build and deploy the demo
+
+The demo build uses Node.js 22+ and no npm dependencies:
+
+```sh
+npm run test:demo
+npm run build:demo
+python3 -m http.server 8877 --bind 127.0.0.1 --directory demo/dist
+```
+
+Open `http://127.0.0.1:8877` to preview it. `scripts/build-demo.mjs` copies only the public UI assets and adds `demo/demo.js`, the mock API and sample data. The generated `demo/dist` directory is ignored by Git.
+
+To deploy from the repository root with your own Vercel account:
+
+```sh
+vercel --prod
+```
+
+`vercel.json` configures the static build and output directory. The demo's Content Security Policy disallows network API connections. The local Python dashboard continues to use its authenticated API.
 
 ## Related work
 

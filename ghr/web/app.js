@@ -1,8 +1,9 @@
-const fragment = location.hash.slice(1);
+const demo = globalThis.GHR_DEMO || null;
+const fragment = demo ? '' : location.hash.slice(1);
 let session = /^[A-Za-z0-9_-]{43}$/.test(fragment) ? fragment : '';
 try {
   if (session) sessionStorage.setItem('ghr-session', session);
-  else session = sessionStorage.getItem('ghr-session') || '';
+  else if (!demo) session = sessionStorage.getItem('ghr-session') || '';
 } catch { /* The launch URL still works when tab storage is unavailable. */ }
 history.replaceState(null, '', '/');
 const $ = (id) => document.getElementById(id);
@@ -35,6 +36,7 @@ function notice(message, error = false) {
   $('notice').hidden = false;
 }
 async function api(path, options = {}) {
+  if (demo) return demo.request(path, options);
   const response = await fetch(path, {
     ...options,
     headers: { Authorization: `Bearer ${session || ''}`, 'Content-Type': 'application/json' },
@@ -239,7 +241,8 @@ async function refresh() {
   $('host-count').textContent = hosts.length;
   $('host-summary').textContent = hosts.join(' · ') || 'No hosts configured yet';
   $('config-location').title = `Copy configuration path: ${configPath}`;
-  $('sync-status').textContent = `Last synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  $('sync-status').textContent = demo ? `Browser-local demo · Updated ${time}` : `Last synced ${time}`;
   renderAccounts();
   renderFilters();
   renderMappings();
@@ -410,6 +413,17 @@ document.addEventListener('keydown', (event) => {
 });
 try { setTheme(localStorage.getItem('ghr-theme') === 'light' ? 'light' : 'dark'); }
 catch { setTheme('dark'); }
-$('session-label').textContent = location.hostname.endsWith('.ts.net') ? 'Tailnet session' : 'Local session';
+$('session-label').textContent = demo ? 'Interactive demo' : location.hostname.endsWith('.ts.net') ? 'Tailnet session' : 'Local session';
+if (demo) {
+  $('reset-demo').addEventListener('click', async () => {
+    $('reset-demo').disabled = true;
+    demo.reset();
+    selectedAccount = '';
+    $('route-search').value = '';
+    try { await refresh(); notice('Demo reset to the sample routes.'); }
+    catch (error) { notice(error.message, true); }
+    finally { $('reset-demo').disabled = false; }
+  });
+}
 setMenu(false);
 refresh().catch(error => { $('sync-status').textContent = 'Could not connect'; notice(error.message, true); });

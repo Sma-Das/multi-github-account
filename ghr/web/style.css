@@ -93,6 +93,11 @@ svg.icon { display: inline-block; width: 18px; height: 18px; flex: 0 0 auto; fil
 .sidebar-footer a { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
 .sidebar-footer a .icon { width: 14px; height: 14px; }
 .app-shell { margin-left: 224px; min-height: 100vh; }
+.demo-banner { position: sticky; top: 0; z-index: 15; display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 11px 34px; border-bottom: 1px solid var(--border); background: var(--accent-bg); color: var(--muted); font-size: 11px; }
+.demo-banner > div { display: flex; align-items: center; gap: 10px; }
+.demo-label { color: var(--accent); border: 1px solid var(--accent); padding: 1px 6px; font-size: 10px; border-radius: 4px; }
+.demo-actions { flex: 0 0 auto; }
+.demo-actions .button { min-height: 28px; padding: 5px 9px; font-size: 10px; }
 .topbar { height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); padding: 0 34px; }
 .breadcrumb { display: flex; align-items: center; gap: 15px; color: var(--faint); font-size: 12px; }
 .breadcrumb-divider { color: var(--border-strong); }
@@ -267,6 +272,7 @@ dialog > p { font-size: 11px; color: var(--muted); margin-top: 7px; }
   .repo-controls { margin-left: 30px; }
 }
 @media (max-width: 760px) {
+  .demo-banner { padding: 11px 21px; flex-wrap: wrap; gap: 9px; }
   .sidebar { transform: translateX(-100%); width: 224px; transition: transform .18s ease; }
   .app-shell { margin-left: 0; }
   #menu-toggle { display: inline-flex; margin-left: -8px; }
@@ -289,6 +295,7 @@ dialog > p { font-size: 11px; color: var(--muted); margin-top: 7px; }
   .quick-start .button { margin-left: 47px; }
 }
 @media (max-width: 460px) {
+  .demo-banner { padding: 11px 16px; font-size: 10px; }
   main { padding: 25px 16px 20px; }
   .topbar { padding: 0 16px; }
   .session-badge { font-size: 9px; }

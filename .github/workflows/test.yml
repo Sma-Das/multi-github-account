@@ -16,3 +16,14 @@ jobs:
       - run: python -m pip install .
       - run: python -m unittest discover -s tests -v
       - run: ghr --version
+
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm run test:demo
+      - run: npm run build:demo
+      - run: node --check demo/dist/app.js

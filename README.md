@@ -264,6 +264,8 @@ vercel --prod
 
 `vercel.json` configures the static build and output directory. The demo's Content Security Policy disallows network API connections. The local Python dashboard continues to use its authenticated API.
 
+For automatic deployments, connect the Vercel project to your GitHub repository with `vercel git connect https://github.com/YOUR-USER/YOUR-REPO`. This project's hosted demo is connected to `Sma-Das/multi-github-account`, with production deployments following `main`.
+
 ## Related work
 
 - [GitHub CLI's multi-account design](https://github.com/cli/cli/blob/trunk/docs/multiple-accounts.md) describes the shared active account and the `gh auth token --user` automation hook. The document is historical; current environment behavior is in [the CLI manual](https://cli.github.com/manual/gh_help_environment).

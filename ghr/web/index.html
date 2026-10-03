@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>GitHub account router</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="/">ghr<span> / account router</span></a><span class="local"><i></i> LOCAL SESSION</span></header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">ONE MACHINE. MULTIPLE IDENTITIES.</p><h1>Every repo gets<br>the right account.</h1><p class="lede">Map your folders once. Let your agents work at the same time.</p></div><div class="route-diagram" aria-hidden="true"><div>~/work/personal <span>→</span> @personal</div><div>~/work/company <span>→</span> @work</div><small>Independent credentials. No account switching.</small></div></div>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section aria-labelledby="accounts-title"><div class="section-heading"><h2 id="accounts-title">Signed-in accounts <span id="account-count" class="count">0</span></h2><button id="refresh" class="quiet">Refresh ↻</button></div><div id="accounts" class="accounts"><p class="muted">Loading accounts…</p></div><p class="hint">Accounts come from GitHub CLI. Add another in your terminal with <code>gh auth login</code>. Tokens stay in its credential store.</p></section>
+    <section aria-labelledby="mappings-title"><div class="section-heading"><h2 id="mappings-title">Folder routes <span id="mapping-count" class="count">0</span></h2><span class="muted">Most specific folder wins</span></div>
+      <form id="mapping-form" class="mapping-form"><label>Folder or repository<input id="folder" placeholder="~/GitHub/my-repo" required autocomplete="off"></label><label>Route to account<select id="account" required><option value="">Choose an account</option></select></label><button type="submit" class="primary">Save route <span>↗</span></button></form>
+      <div class="table-wrap"><table><thead><tr><th>Folder</th><th>Account</th><th>Host</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="mappings"></tbody></table><p id="empty-mappings" class="empty" hidden>No routes yet. Add a repo or a parent folder above.</p></div>
+    </section>
+    <section aria-labelledby="scan-title"><div class="section-heading"><h2 id="scan-title">Find your repositories</h2><span class="muted">Includes upstream remotes</span></div><form id="scan-form" class="scan-form"><label class="sr-only" for="scan-path">Folder to scan</label><input id="scan-path" placeholder="~/GitHub" required><button type="submit" class="quiet" id="scan-button">Scan folders →</button></form><div id="repositories"><p class="muted">Scan a workspace to see its repos, remotes, and current routes.</p></div></section>
+    <section class="terminal-guide" aria-labelledby="agent-title"><div><p class="eyebrow">READY FOR YOUR AGENTS</p><h2 id="agent-title">Start with the right credentials.</h2><p>Each agent inherits its own account. Linked Git worktrees inherit their primary checkout's route.</p></div><div class="commands"><code>ghr exec --path ~/GitHub/my-repo -- claude</code><code>ghr gh --path ~/GitHub/my-repo -- pr create</code><code>ghr setup --global</code><p>The last command enables routing for ordinary HTTPS <code>git push</code> in all mapped folders. Unmapped folders will stop instead of using an unrelated account. SSH remotes need a separate SSH-key setup or a switch to HTTPS.</p></div></section>
+    <footer><span id="config-path">Local configuration</span><span>Nothing sent to a hosted dashboard.</span></footer>
+  </main>
+</body>
+</html>

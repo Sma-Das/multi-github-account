@@ -7,10 +7,34 @@ import secrets
 from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
-from .core import RouterError, accounts, add_mapping, config_path, read_config, remove_mapping, scan
+from .core import (RouterError, accounts, add_mapping, config_path, read_config,
+                   remove_mapping, scan, validate_identity)
 
 
-def make_server(port=8765):
+def trusted_origin(public_url):
+    """Accept one explicit HTTPS origin, never forwarded headers or wildcards."""
+    if public_url is None:
+        return None
+    try:
+        parsed = urlsplit(public_url)
+        port = parsed.port
+    except ValueError as error:
+        raise RouterError("Invalid public dashboard URL.") from error
+    if (not public_url.isascii() or any(char.isspace() for char in public_url)
+            or parsed.scheme != "https" or not parsed.hostname
+            or parsed.username is not None or parsed.password is not None
+            or parsed.path not in ("", "/") or parsed.query or parsed.fragment
+            or (port is not None and not 1 <= port <= 65535)):
+        raise RouterError("Use an HTTPS origin without a path, credentials, query, or fragment.")
+    validate_identity(parsed.hostname, "valid")
+    host = parsed.hostname.lower()
+    if port is not None and port != 443:
+        host += f":{port}"
+    return f"https://{host}"
+
+
+def make_server(port=8765, public_url=None):
+    public_origin = trusted_origin(public_url)
     session = secrets.token_urlsafe(32)
     assets = Path(__file__).parent / "web"
 
@@ -33,15 +57,20 @@ def make_server(port=8765):
 
         def authorized(self):
             host = f"127.0.0.1:{self.server.server_port}"
-            if self.headers.get("Host") != host:
+            allowed_hosts = {host}
+            allowed_origins = {f"http://{host}"}
+            if public_origin:
+                allowed_hosts.add(urlsplit(public_origin).netloc)
+                allowed_origins.add(public_origin)
+            if self.headers.get("Host", "").lower() not in allowed_hosts:
                 self.respond(403, {"error": "Invalid dashboard host."})
                 return False
             origin = self.headers.get("Origin")
-            if origin is not None and origin != f"http://{host}":
+            if origin is not None and origin not in allowed_origins:
                 self.respond(403, {"error": "Cross-origin requests are not allowed."})
                 return False
             supplied = self.headers.get("Authorization", "")
-            if not secrets.compare_digest(supplied, "Bearer " + session):
+            if not secrets.compare_digest(supplied.encode(), ("Bearer " + session).encode()):
                 self.respond(401, {"error": "Open the session URL printed by ghr ui."})
                 return False
             return True
@@ -111,13 +140,14 @@ def make_server(port=8765):
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
-    return server, f"http://127.0.0.1:{server.server_port}/#{session}"
+    origin = public_origin or f"http://127.0.0.1:{server.server_port}"
+    return server, f"{origin}/#{session}"
 
 
-def serve(port=8765, open_browser=True):
-    server, url = make_server(port)
+def serve(port=8765, open_browser=True, public_url=None):
+    server, url = make_server(port, public_url)
     print(f"Account dashboard: {url}", flush=True)
-    print("Local session only. Press Ctrl-C to stop.", flush=True)
+    print("Dashboard session. Press Ctrl-C to stop.", flush=True)
     if open_browser:
         webbrowser.open(url)
     try:

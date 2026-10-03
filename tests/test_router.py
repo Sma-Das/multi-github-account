@@ -15,7 +15,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from ghr import core
-from ghr.server import make_server
+from ghr.server import make_server, trusted_origin
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -209,6 +209,42 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 400)
         json.load(urlopen(Request(base + "api/mappings", data=json.dumps(route).encode(), headers=headers, method="DELETE")))
         self.assertEqual(core.read_config()["mappings"], [])
+
+    def test_dashboard_trusted_proxy_origin_preserves_session_checks(self):
+        path = self.repo("tailscale-repo")
+        origin = "https://mini-chonk.example.ts.net"
+        server, url = make_server(0, public_url=origin + "/")
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.assertTrue(url.startswith(origin + "/#"))
+        local = f"http://127.0.0.1:{server.server_port}"
+        headers = {"Host": "mini-chonk.example.ts.net", "Origin": origin,
+                   "Authorization": "Bearer " + url.split("#")[1], "Content-Type": "application/json"}
+        state = json.load(urlopen(Request(local + "/api/state", headers=headers)))
+        self.assertEqual(len(state["accounts"]), 3)
+        route = {"path": str(path), "host": "github.com", "account": "user-1"}
+        # Tailscale may preserve or rewrite Host. Both require the same session secret.
+        for host in ("mini-chonk.example.ts.net", f"127.0.0.1:{server.server_port}"):
+            saved = json.load(urlopen(Request(local + "/api/mappings", data=json.dumps(route).encode(),
+                                             headers=dict(headers, Host=host), method="PUT")))
+            self.assertEqual(saved["account"], "user-1")
+        for override, status in (({"Host": "evil.example"}, 403),
+                                 ({"Origin": "https://evil.example"}, 403),
+                                 ({"Authorization": "Bearer wrong"}, 401),
+                                 ({"Host": "evil.example", "X-Forwarded-Host": "mini-chonk.example.ts.net"}, 403)):
+            with self.assertRaises(HTTPError) as error:
+                urlopen(Request(local + "/api/state", headers=dict(headers, **override)))
+            self.assertEqual(error.exception.code, status)
+
+    def test_dashboard_public_origin_validation(self):
+        self.assertEqual(trusted_origin("https://EXAMPLE.ts.net:443/"), "https://example.ts.net")
+        self.assertEqual(trusted_origin("https://example.ts.net:8443"), "https://example.ts.net:8443")
+        for url in ("http://example.ts.net", "https://user:pass@example.ts.net", "https://example.ts.net/path",
+                    "https://example.ts.net?x=1", "https://example.ts.net#secret", "https://*.ts.net",
+                    "https://example.ts.net:invalid", "https://example.ts.net:0", "https://example.ts.net\n"):
+            with self.subTest(url=url), self.assertRaises(core.RouterError):
+                make_server(0, public_url=url)
 
 
 if __name__ == "__main__":

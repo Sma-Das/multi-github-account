@@ -40,6 +40,7 @@ def main(argv=None):
     ui = sub.add_parser("ui", help="Open the local account mapping dashboard")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--no-browser", action="store_true")
+    ui.add_argument("--public-url", help="Trusted HTTPS origin of a reverse proxy, such as Tailscale Serve")
     args = parser.parse_args(argv)
     try:
         if args.command == "accounts":
@@ -62,7 +63,7 @@ def main(argv=None):
             result = scan(args.path)
         elif args.command == "ui":
             from .server import serve
-            serve(args.port, not args.no_browser)
+            serve(args.port, not args.no_browser, args.public_url)
             return
         else:
             command = args.args

@@ -141,7 +141,29 @@ The dashboard opens on `http://127.0.0.1:8765`. It shows stored accounts and fol
 
 The server binds only to loopback. API requests require a random per-session bearer secret carried in the launch URL's fragment. The page removes the fragment and stores the dashboard session in that tab. The API rejects cross-origin requests and unexpected Host headers. GitHub tokens are never sent to the dashboard, written to its config, or returned by its account-list endpoint. No external scripts, styles, fonts, or analytics are loaded.
 
-Use `ghr ui --no-browser --port 8766` for another port, or `--port 0` for an available port. Stop with Ctrl-C. The dashboard session URL authorizes local mapping changes; keep it local.
+Use `ghr ui --no-browser --port 8766` for another port, or `--port 0` for an available port. Stop with Ctrl-C. The dashboard session URL authorizes mapping changes on the hosting machine.
+
+### Access over Tailscale
+
+Use Tailscale Serve to access the dashboard from another device on your tailnet without an SSH tunnel. MagicDNS supplies the hostname; Serve terminates HTTPS and proxies to the loopback server.
+
+Find this machine's full `*.ts.net` DNS name with `tailscale status --json`, under `Self.DNSName`. Then, on the hosting machine:
+
+```sh
+ghr ui --no-browser --public-url https://YOUR-MACHINE.YOUR-TAILNET.ts.net
+```
+
+In another terminal on that same machine:
+
+```sh
+tailscale serve --bg http://127.0.0.1:8765
+```
+
+If Serve is disabled, Tailscale prints a link to enable it for your tailnet. Open the HTTPS session URL printed by `ghr ui` on your other device. Include its fragment, which contains the dashboard session secret. The other device must be connected to the tailnet and allowed to reach the hosting machine.
+
+`--public-url` adds one exact trusted HTTPS origin and host. The backend still binds only to loopback, still checks its session secret, and does not trust arbitrary forwarded headers. Tailscale Serve limits network access to your tailnet.
+
+Stop this Serve endpoint with `tailscale serve --https=443 off`. Mapping changes apply to folders and accounts on the hosting machine.
 
 ## Enterprise and SSH
 

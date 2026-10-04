@@ -420,6 +420,8 @@ function updateLaunchCommand() {
   const host = mapping ? ` --host ${shellQuote(mapping.host)}` : '';
   const target = mapping?.repo ? ` --repo ${shellQuote(mapping.repo)}` : '';
   $('launch-command').textContent = `ghr exec --path ${shellQuote(path)}${host}${target} -- ${$('agent-executable').value}`;
+  $('launch-command').title = currentMachine === 'local' ? 'Run on this computer' : `Run on ${currentMachine}`;
+  $('launch-title').textContent = currentMachine === 'local' ? 'Launch an agent on this computer' : `Launch an agent on ${currentMachine}`;
 }
 async function copyText(text, button) {
   try {

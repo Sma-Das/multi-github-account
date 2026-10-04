@@ -179,6 +179,8 @@ tbody tr:hover { background: var(--surface-hover); }
 .folder-cell > .icon { color: var(--faint); width: 17px; height: 17px; }
 .folder-cell strong { display: block; font-size: 13px; font-weight: 500; }
 .folder-cell code { display: block; color: var(--faint); margin-top: 2px; font-size: 11px; overflow-wrap: anywhere; }
+.folder-cell code.route-scope { color: var(--muted); font-size: 10px; }
+.optional-label { font-size: 10px; color: var(--faint); margin-left: 5px; }
 .route-account { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .route-account .avatar { width: 23px; height: 23px; border-radius: 5px; font-size: 8px; }
 .host-cell { color: var(--faint); font-size: 11px; white-space: nowrap; }

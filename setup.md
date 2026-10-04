@@ -90,6 +90,8 @@ ghr map /absolute/path/to/company-workspace --host github.com --account WORK_USE
 
 The longest matching folder wins. Explicit checkout routes override parent routes. Linked worktrees inherit their primary checkout's route. Mapping a subfolder inside a checkout maps the whole checkout, so use the checkout root when explaining the result.
 
+Inspect each checkout's remotes separately. Migration work may require multiple accounts in the same folder. Set its default account, then bind each GitHub remote with `ghr map REPO --remote NAME --account USER`. Use `--repo OWNER/REPO` if fetch and push URLs differ under one remote name. Once a host has remote-specific bindings in a checkout, all Git targets on that host require an explicit binding. If the source account is not known or cannot access the upstream, leave that remote unassigned and report the missing credential instead of mapping it to the destination account.
+
 HTTPS Git remotes use this router. SSH remotes use SSH keys. If the user wants Git routing for an SSH checkout, change its fetch and any separate push URLs to HTTPS while preserving their host, owner, and repository. Otherwise, retain SSH and use the router for GitHub API commands and agent launches.
 
 ## 5. Configure and verify Git routing
@@ -154,6 +156,8 @@ ghr exec --path /absolute/path/to/company-repo -- opencode
 ```
 
 Each process has one selected account and host. An operation targeting another account must use a fresh `ghr exec --path TARGET -- COMMAND` or `ghr gh --path TARGET -- SUBCOMMAND`. Plain `gh` outside a wrapped process still uses its usual account selection.
+
+Configured Git remotes can use different identities inside one wrapped agent. For API operations in migration checkouts, give the agent `ghr gh --path REPO --remote NAME -- SUBCOMMAND` commands. A temporary `--account USER` override selects an account for just that process and does not rewrite its saved routes.
 
 Use [docs/agent-instructions.md](https://github.com/Sma-Das/multi-github-account/blob/main/docs/agent-instructions.md) as the text for the user's existing repository-level agent instructions. Merge the relevant instructions into that file if the user wants automatic routing for agents already launched elsewhere.
 

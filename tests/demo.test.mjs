@@ -70,3 +70,18 @@ test('blocked or malformed browser storage falls back to a working in-memory dem
   await put(blocked.GHR_DEMO, { path: '~/GitHub/sandbox', host: 'github.com', account: 'alex-dev' });
   assert.equal((await blocked.GHR_DEMO.request('/api/state')).mappings.length, 7);
 });
+
+test('remote-scoped routes coexist with defaults and remove independently', async () => {
+  const api = browser();
+  const target = { path: '~/GitHub/work/api-service', host: 'github.com', account: 'alex-dev', repo: 'ACME/API-SERVICE.git' };
+  const scoped = await put(api, target);
+  assert.equal(scoped.repo, 'acme/api-service');
+  const state = await api.request('/api/state');
+  assert.equal(state.mappings.length, 7);
+  const scanned = await api.request('/api/scan?path=~/GitHub/work/api-service');
+  assert.equal(scanned.repositories[0].account, 'alex-work');
+  assert.equal(scanned.repositories[0].remotes[0].account, 'alex-dev');
+  await api.request('/api/mappings', { method: 'DELETE', body: JSON.stringify(scoped) });
+  assert.equal((await api.request('/api/state')).mappings.length, 6);
+  assert.equal((await api.request('/api/scan?path=~/GitHub/work/api-service')).repositories[0].remotes[0].account, 'alex-work');
+});

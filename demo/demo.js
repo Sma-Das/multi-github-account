@@ -46,6 +46,7 @@
 
   function validMapping(mapping) {
     return mapping && typeof mapping.path === 'string' && mapping.path.startsWith('/')
+      && (!mapping.repo || typeof mapping.repo === 'string')
       && accounts.some(a => a.host === mapping.host && a.account === mapping.account);
   }
 
@@ -53,7 +54,8 @@
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (stored?.version === 1 && Array.isArray(stored.mappings)
         && stored.mappings.length <= 200 && stored.mappings.every(validMapping)) {
-      mappings = stored.mappings.map(m => ({ path: normalizePath(m.path), host: m.host, account: m.account }));
+      mappings = stored.mappings.map(m => ({ path: normalizePath(m.path), host: m.host, account: m.account,
+                                          ...(m.repo ? { repo: normalizeRepo(m.repo) } : {}) }));
     }
   } catch { /* Missing, blocked, or invalid storage starts a fresh demo. */ }
 
@@ -62,10 +64,18 @@
     catch { /* The demo still works in memory if browser storage is blocked. */ }
   }
 
-  function resolve(path, host) {
+  function normalizeRepo(value) {
+    const target = String(value).replace(/^\/+|\/+$/g, '').replace(/\.git$/, '').toLowerCase();
+    if (!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(target) || target.split('/').some(p => ['.', '..'].includes(p))) throw new Error('Use OWNER/REPO for the remote repository.');
+    return target;
+  }
+
+  function resolve(path, host, target = null) {
     const candidates = mappings.filter(m => m.host === host && within(path, m.path));
     candidates.sort((a, b) => b.path.length - a.path.length);
-    return candidates[0]?.account || null;
+    const best = candidates.filter(m => m.path.length === candidates[0]?.path.length);
+    const scoped = best.some(m => m.repo);
+    return best.find(m => target && scoped ? m.repo === normalizeRepo(target) : !m.repo)?.account || null;
   }
 
   async function request(path, options = {}) {
@@ -82,8 +92,8 @@
         .map(([folder, host, repo, protocol]) => {
           const path = `${HOME}/GitHub/${folder}`;
           return { path, primary: path, account: resolve(path, host), remotes: [
-            { name: 'origin', direction: 'fetch', host, repo, protocol },
-            { name: 'origin', direction: 'push', host, repo, protocol },
+            { name: 'origin', direction: 'fetch', host, repo, protocol, account: resolve(path, host, repo) },
+            { name: 'origin', direction: 'push', host, repo, protocol, account: resolve(path, host, repo) },
           ] };
         });
       return clone({ repositories });
@@ -94,21 +104,23 @@
       if (!data || typeof data !== 'object' || typeof data.host !== 'string') throw new Error('Choose a GitHub host.');
       const folder = normalizePath(data.path);
       const host = data.host.toLowerCase();
+      const target = data.repo ? normalizeRepo(data.repo) : null;
       if (method === 'PUT') {
         if (!accounts.some(a => a.host === host && a.account === data.account && a.state === 'success')) {
           throw new Error('Choose a connected demo account.');
         }
         const remote = repositorySeeds.find(([name]) => `${HOME}/GitHub/${name}` === folder);
         if (remote && remote[1] !== host) throw new Error("That hostname does not match this repository's remotes.");
-        if (mappings.length >= 200 && !mappings.some(m => m.path === folder && m.host === host)) {
+        if (target && (!remote || remote[2].toLowerCase() !== target)) throw new Error('That repository does not match a sample remote in this checkout.');
+        if (mappings.length >= 200 && !mappings.some(m => m.path === folder && m.host === host && (m.repo || null) === target)) {
           throw new Error('This demo supports up to 200 routes. Reset the demo to start over.');
         }
       }
-      mappings = mappings.filter(m => m.path !== folder || m.host !== host);
-      if (method === 'PUT') mappings.push({ path: folder, host, account: data.account });
+      mappings = mappings.filter(m => m.path !== folder || m.host !== host || (m.repo || null) !== target);
+      if (method === 'PUT') mappings.push({ path: folder, host, account: data.account, ...(target ? { repo: target } : {}) });
       mappings.sort((a, b) => a.path.localeCompare(b.path) || a.host.localeCompare(b.host));
       persist();
-      return method === 'PUT' ? { path: folder, host, account: data.account } : { removed: true };
+      return method === 'PUT' ? { path: folder, host, account: data.account, ...(target ? { repo: target } : {}) } : { removed: true };
     }
     throw new Error('This action is not part of the interactive demo.');
   }

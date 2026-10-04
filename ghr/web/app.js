@@ -161,7 +161,7 @@ function renderFilters() {
 function renderMappings() {
   const query = $('route-search').value.trim().toLowerCase();
   const mappings = state.mappings.filter(mapping => (!selectedAccount || identityKey(mapping) === selectedAccount)
-    && `${mapping.path} ${mapping.account} ${mapping.host}`.toLowerCase().includes(query));
+    && `${mapping.path} ${mapping.account} ${mapping.host} ${mapping.repo || ''}`.toLowerCase().includes(query));
   $('mappings').replaceChildren();
   $('empty-mappings').hidden = !!mappings.length;
   if (!state.mappings.length) {
@@ -179,6 +179,7 @@ function renderMappings() {
     const path = el('code', shortPath(mapping.path));
     path.title = mapping.path;
     info.append(el('strong', basename(mapping.path)), path);
+    info.append(el('code', mapping.repo ? `Remote: ${mapping.repo}` : 'Folder default', 'route-scope'));
     content.append(icon('folder'), info);
     folder.append(content);
     const accountCell = el('td');
@@ -193,12 +194,12 @@ function renderMappings() {
     const buttons = el('div', undefined, 'row-actions');
     const edit = el('button', undefined, 'icon-button');
     edit.append(icon('edit'));
-    edit.setAttribute('aria-label', `Edit route for ${mapping.path}`);
+    edit.setAttribute('aria-label', `Edit route for ${mapping.path}${mapping.repo ? ' · ' + mapping.repo : ''}`);
     edit.title = 'Edit route';
     edit.addEventListener('click', () => openRoute(mapping));
     const remove = el('button', undefined, 'icon-button delete-button');
     remove.append(icon('trash'));
-    remove.setAttribute('aria-label', `Remove route for ${mapping.path}`);
+    remove.setAttribute('aria-label', `Remove route for ${mapping.path}${mapping.repo ? ' · ' + mapping.repo : ''}`);
     remove.title = 'Remove route';
     remove.addEventListener('click', async () => {
       remove.disabled = true;
@@ -220,7 +221,7 @@ function renderAgentRoutes() {
   placeholder.value = '';
   $('agent-route').replaceChildren(placeholder);
   state.mappings.forEach(mapping => {
-    const option = el('option', `${shortPath(mapping.path)} · @${mapping.account}`);
+    const option = el('option', `${shortPath(mapping.path)}${mapping.repo ? ' · ' + mapping.repo : ''} · @${mapping.account}`);
     option.value = JSON.stringify(mapping);
     $('agent-route').append(option);
   });
@@ -261,6 +262,8 @@ function openRoute(mapping = null) {
   $('dialog-title').textContent = mapping ? 'Edit folder route' : 'Create a folder route';
   $('folder').value = mapping ? mapping.path : '';
   $('folder').readOnly = !!mapping;
+  $('route-target').value = mapping?.repo || '';
+  $('route-target').readOnly = !!mapping;
   accountOptions($('account'), mapping ? mapping.host : undefined);
   $('account').value = mapping ? JSON.stringify({ host: mapping.host, account: mapping.account }) : '';
   $('dialog-error').hidden = true;
@@ -288,25 +291,44 @@ function renderRepositories(repositories) {
     const identity = el('div', undefined, 'repo-identity');
     const details = el('div', undefined, 'repo-details');
     details.append(el('h3', basename(repo.path)), el('code', shortPath(repo.path)));
-    const unique = [...new Set(repo.remotes.map(r => `${r.name} · ${r.host}/${r.repo} · ${r.protocol.toUpperCase()}`))];
+    const unique = [...new Set(repo.remotes.map(r => `${r.name} · ${r.host}/${r.repo} · ${r.protocol.toUpperCase()}${r.account ? ' · @' + r.account : ' · Unassigned'}`))];
     for (const remote of unique) details.append(el('p', remote));
     if (!unique.length) details.append(el('p', 'No supported upstream remote'));
     details.append(badge(repo.account ? `@${repo.account}` : 'No route', repo.account ? '' : 'neutral'));
     identity.append(icon('folder'), details);
     const controls = el('div', undefined, 'repo-controls');
+    const scope = el('select');
+    scope.setAttribute('aria-label', `Route target for ${repo.path}`);
+    const folderDefault = el('option', 'Folder default');
+    folderDefault.value = '';
+    scope.append(folderDefault);
+    const remoteScopes = new Map(repo.remotes.filter(r => state.accounts.some(a => a.host === r.host))
+      .map(r => [`${r.host}/${r.repo}`, r]));
+    for (const remote of remoteScopes.values()) {
+      const option = el('option', `${remote.name} · ${remote.repo}`);
+      option.value = JSON.stringify({ host: remote.host, repo: remote.repo });
+      scope.append(option);
+    }
     const select = el('select');
     select.setAttribute('aria-label', `Account for ${repo.path}`);
     const hosts = [...new Set(repo.remotes.map(r => r.host))];
     accountOptions(select, hosts.length === 1 ? hosts[0] : undefined);
+    scope.addEventListener('change', () => {
+      const target = scope.value ? JSON.parse(scope.value) : null;
+      accountOptions(select, target?.host || (hosts.length === 1 ? hosts[0] : undefined));
+    });
     const button = el('button', 'Save route', 'button secondary');
     button.addEventListener('click', async () => {
       if (!select.value) { notice('Choose an account first.', true); select.focus(); return; }
       button.disabled = true;
-      try { await saveRoute(repo.path, JSON.parse(select.value)); }
+      try {
+        const target = scope.value ? JSON.parse(scope.value) : {};
+        await saveRoute(repo.path, { ...JSON.parse(select.value), ...target });
+      }
       catch (error) { notice(error.message, true); }
       finally { button.disabled = false; }
     });
-    controls.append(select, button);
+    controls.append(scope, select, button);
     row.append(identity, controls);
     $('repositories').append(row);
   }
@@ -324,7 +346,8 @@ function updateLaunchCommand() {
   const mapping = selected ? JSON.parse(selected) : null;
   const path = mapping ? mapping.path : '/path/to/repo';
   const host = mapping ? ` --host ${shellQuote(mapping.host)}` : '';
-  $('launch-command').textContent = `ghr exec --path ${shellQuote(path)}${host} -- ${$('agent-executable').value}`;
+  const target = mapping?.repo ? ` --repo ${shellQuote(mapping.repo)}` : '';
+  $('launch-command').textContent = `ghr exec --path ${shellQuote(path)}${host}${target} -- ${$('agent-executable').value}`;
 }
 async function copyText(text, button) {
   try {
@@ -365,7 +388,9 @@ $('mapping-form').addEventListener('submit', async (event) => {
   $('dialog-error').hidden = true;
   try {
     if (!$('account').value) throw new Error('Choose a connected GitHub account.');
-    await saveRoute($('folder').value, JSON.parse($('account').value));
+    const identity = JSON.parse($('account').value);
+    if ($('route-target').value.trim()) identity.repo = $('route-target').value.trim();
+    await saveRoute($('folder').value, identity);
     closeRoute();
   } catch (error) {
     $('dialog-error').textContent = error.message;

@@ -148,6 +148,40 @@ ghr exec --path ~/GitHub/repo-3 -- opencode
 
 Each process gets its own credentials. Its child shells inherit them, so regular HTTPS `git push` and `gh pr create` use that account. A running process keeps its selected account when you edit the route in the dashboard. Restart or run another `ghr exec` to select a new route.
 
+### Migration checkouts with multiple accounts
+
+A single checkout can fetch from one account's repository and push to another account's repository. Bind credentials to each remote target instead of changing the folder route between operations:
+
+```sh
+ghr map ~/Projects/migration --account destination-user
+ghr map ~/Projects/migration --remote source --account source-user
+ghr map ~/Projects/migration --remote destination --account destination-user
+ghr setup --path ~/Projects/migration
+
+git -C ~/Projects/migration fetch source
+git -C ~/Projects/migration push destination
+```
+
+The HTTPS helper matches the requested hostname and `OWNER/REPO` path. Once a checkout has remote-specific routes for a host, unmapped remote targets on that host stop instead of borrowing the folder's default credentials. Linked worktrees inherit these routes.
+
+Select the remote for GitHub API commands too:
+
+```sh
+ghr gh --path ~/Projects/migration --remote source -- repo view
+ghr gh --path ~/Projects/migration --remote destination -- pr create
+```
+
+This sets both the process-local token and `GH_REPO`. If one named remote has different fetch and push URLs, use `--repo OWNER/REPO` to choose the exact target. You can inspect a target with `ghr whoami --path REPO --remote NAME`, and remove one binding with `ghr unmap REPO --remote NAME`.
+
+For a one-off operation, choose an account explicitly without editing stored routes:
+
+```sh
+ghr exec --path ~/Projects/migration --account source-user -- git fetch source
+ghr gh --path ~/Projects/migration --account destination-user --repo OWNER/REPO -- pr list
+```
+
+An explicit `--account` overrides Git credential selection for that process. Without that override, a wrapped agent can use multiple configured Git remote identities while its ordinary `gh` calls use the selected default account. Its remote bindings are captured when it starts, so later mapping edits do not change an in-flight operation. Use `ghr gh --remote` for API operations targeting another account.
+
 To run individual operations:
 
 ```sh
@@ -171,6 +205,8 @@ ghr ui
 ```
 
 The dashboard opens on `http://127.0.0.1:8765`. It shows stored accounts and folder routes. Scan a workspace to discover repositories and inspect fetch and push remotes, then assign accounts from the list. Scans skip dependency and hidden folders, check five levels deep, and stop at 200 repositories or 10,000 visited folders.
+
+The route dialog has an optional `OWNER/REPO` field for remote-specific bindings. Repository scan cards let you choose the folder default or an individual remote target, and show each remote's assigned account.
 
 The server binds only to loopback. API requests require a random per-session bearer secret carried in the launch URL's fragment. The page removes the fragment and stores the dashboard session in that tab. The API rejects cross-origin requests and unexpected Host headers. GitHub tokens are never sent to the dashboard, written to its config, or returned by its account-list endpoint. No external scripts, styles, fonts, or analytics are loaded.
 

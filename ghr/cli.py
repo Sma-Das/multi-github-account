@@ -5,7 +5,8 @@ import sys
 
 from . import __version__
 from .core import (RouterError, accounts, add_mapping, canonical, credential,
-                   process_env, read_config, remove_mapping, resolve, scan, setup_helper)
+                   process_env, read_config, remote_target, remove_mapping, repository,
+                   resolve, scan, setup_helper, normalize_repo, validate_identity)
 
 
 def main(argv=None):
@@ -17,13 +18,22 @@ def main(argv=None):
     mapping = sub.add_parser("map", help="Map a checkout or parent folder to a stored account")
     mapping.add_argument("path", nargs="?", default=".")
     mapping.add_argument("--account", required=True)
-    mapping.add_argument("--host", default="github.com")
+    mapping.add_argument("--host")
+    group = mapping.add_mutually_exclusive_group()
+    group.add_argument("--remote", help="Bind the account to a named remote's repository")
+    group.add_argument("--repo", help="Bind the account to an exact OWNER/REPO target")
     unmap = sub.add_parser("unmap", help="Remove a folder mapping")
     unmap.add_argument("path", nargs="?", default=".")
-    unmap.add_argument("--host", default="github.com")
+    unmap.add_argument("--host")
+    group = unmap.add_mutually_exclusive_group()
+    group.add_argument("--remote")
+    group.add_argument("--repo")
     who = sub.add_parser("whoami", help="Explain the selected account and upstream remotes")
     who.add_argument("--path", default=".")
     who.add_argument("--host")
+    group = who.add_mutually_exclusive_group()
+    group.add_argument("--remote")
+    group.add_argument("--repo")
     setup = sub.add_parser("setup", help="Configure ordinary HTTPS git commands to use the router")
     setup.add_argument("--global", dest="global_scope", action="store_true", help="Apply to all checkouts for this host")
     setup.add_argument("--host", default="github.com")
@@ -32,6 +42,10 @@ def main(argv=None):
         cmd = sub.add_parser(name, help="Run an agent/command with isolated credentials" if name == "exec" else "Run gh with the mapped account")
         cmd.add_argument("--path", default=".")
         cmd.add_argument("--host")
+        cmd.add_argument("--account", help="Use a stored account for this command without changing any route")
+        group = cmd.add_mutually_exclusive_group()
+        group.add_argument("--remote", help="Select credentials and gh repository from a named remote")
+        group.add_argument("--repo", help="Select credentials and gh repository for OWNER/REPO")
         cmd.add_argument("args", nargs=argparse.REMAINDER)
     helper = sub.add_parser("credential", help=argparse.SUPPRESS)
     helper.add_argument("action", choices=("get", "store", "erase"))
@@ -48,12 +62,15 @@ def main(argv=None):
         elif args.command == "list":
             result = read_config()["mappings"]
         elif args.command == "map":
-            result = add_mapping(args.path, args.host, args.account)
+            host, target = remote_target(args.path, args.remote, args.host) if args.remote else (args.host or "github.com", args.repo)
+            result = add_mapping(args.path, host, args.account, target)
         elif args.command == "unmap":
-            remove_mapping(args.path, args.host)
-            result = {"removed": str(canonical(args.path)), "host": args.host}
+            host, target = remote_target(args.path, args.remote, args.host) if args.remote else (args.host or "github.com", args.repo)
+            remove_mapping(args.path, host, target)
+            result = {"removed": str(canonical(args.path)), "host": host}
         elif args.command == "whoami":
-            result = resolve(args.path, args.host)
+            host, target = remote_target(args.path, args.remote, args.host) if args.remote else (args.host, args.repo)
+            result = resolve(args.path, host, target=target)
         elif args.command == "setup":
             setup_helper(args.host, args.global_scope, args.path)
             result = {"configured": args.host, "scope": "global" if args.global_scope else "repository"}
@@ -76,7 +93,18 @@ def main(argv=None):
             if not command:
                 raise RouterError("Supply a command after --, for example: ghr exec -- claude")
             path = canonical(args.path)
-            mapping = resolve(path, args.host)
+            host, target = remote_target(path, args.remote, args.host) if args.remote else (args.host, args.repo)
+            if args.account:
+                host = host or "github.com"
+                validate_identity(host, args.account)
+                mapping = {"path": str(path), "host": host, "account": args.account,
+                           "repository": repository(path), "override": True}
+                if target:
+                    mapping["repo"] = normalize_repo(target)
+            else:
+                mapping = resolve(path, host, target=target)
+            if target:
+                mapping["api_repo"] = normalize_repo(target)
             env = process_env(mapping)
             os.chdir(path)
             os.execvpe(command[0], command, env)

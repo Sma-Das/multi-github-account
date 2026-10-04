@@ -121,10 +121,10 @@ def make_server(port=8765, public_url=None):
                 if not isinstance(data, dict) or not all(isinstance(data.get(k), str) and data[k] for k in fields):
                     raise ValueError("Missing mapping fields.")
                 if remove:
-                    remove_mapping(data["path"], data["host"])
+                    remove_mapping(data["path"], data["host"], data.get("repo"))
                     self.respond(200, {"removed": True})
                 else:
-                    self.respond(200, add_mapping(data["path"], data["host"], data["account"]))
+                    self.respond(200, add_mapping(data["path"], data["host"], data["account"], data.get("repo")))
             except (ValueError, TypeError):
                 self.respond(400, {"error": "Invalid mapping JSON."})
             except RouterError as error:

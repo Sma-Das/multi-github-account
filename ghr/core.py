@@ -10,7 +10,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 
 class RouterError(Exception):
@@ -67,6 +67,8 @@ def read_config():
                 or not Path(mapping["path"]).is_absolute()):
             raise RouterError("Invalid mapping in ghr config.")
         validate_identity(mapping["host"], mapping["account"])
+        if "repo" in mapping:
+            mapping["repo"] = normalize_repo(mapping["repo"])
     return data
 
 
@@ -98,6 +100,28 @@ def validate_identity(host, account):
         raise RouterError("Use a hostname such as github.com, without a scheme, path, or port.")
     if not re.fullmatch(r"[a-zA-Z0-9_][a-zA-Z0-9_-]*", account):
         raise RouterError("Invalid GitHub account name.")
+
+
+def normalize_repo(value):
+    if not isinstance(value, str):
+        raise RouterError("Use a remote repository in OWNER/REPO format.")
+    value = unquote(value).strip("/").removesuffix(".git").lower()
+    if (not re.fullmatch(r"[a-z0-9_.-]+/[a-z0-9_.-]+", value)
+            or any(part in (".", "..") for part in value.split("/"))):
+        raise RouterError("Use a remote repository in OWNER/REPO format.")
+    return value
+
+
+def remote_target(path, name, host=None):
+    info = repository(canonical(path))
+    if not info:
+        raise RouterError("Select a remote from inside a Git checkout.")
+    targets = {(r["host"], normalize_repo(r["repo"])) for r in info["remotes"]
+               if r["name"] == name and (host is None or r["host"] == host.lower())}
+    if len(targets) != 1:
+        raise RouterError("That remote is missing or has different fetch/push targets. Use --host and --repo OWNER/REPO to select an exact target.")
+    hostname, target = next(iter(targets))
+    return hostname, target
 
 
 def accounts():
@@ -172,21 +196,42 @@ def is_within(path, parent):
         return False
 
 
-def resolve(path, host=None, use_pin=False):
+def resolve(path, host=None, use_pin=False, target=None):
     path = canonical(path)
     repo = repository(path)
-    mappings = read_config()["mappings"]
+    target = normalize_repo(target) if target else None
     pinned = {k: os.environ.get("GHR_PINNED_" + k.upper()) for k in ("path", "host", "account")}
     if use_pin and all(pinned.values()):
         validate_identity(pinned["host"], pinned["account"])
         if (host is None or host.lower() == pinned["host"]) and any(
                 is_within(candidate, canonical(pinned["path"]))
                 for candidate in [path, canonical(repo["primary"]) if repo else path]):
+            if os.environ.get("GHR_PINNED_OVERRIDE") != "1":
+                try:
+                    routes = json.loads(os.environ.get("GHR_PINNED_REMOTES", "[]"))
+                except ValueError as error:
+                    raise RouterError("Invalid process-scoped remote routes.") from error
+                if not isinstance(routes, list) or any(not isinstance(r, dict) or not isinstance(r.get("repo"), str)
+                                                     or not isinstance(r.get("account"), str) for r in routes):
+                    raise RouterError("Invalid process-scoped remote routes.")
+                if routes:
+                    for route in routes:
+                        if route["repo"] == target:
+                            validate_identity(pinned["host"], route["account"])
+                            return dict(pinned, account=route["account"], repo=target, repository=repo, inherited=False)
+                    raise RouterError("No account mapping for this remote. Use ghr map --remote NAME --account USER, or an explicit --account for this operation.")
             return dict(pinned, repository=repo, inherited=False)
         raise RouterError("This process is scoped to another checkout. Run ghr exec --path TARGET -- COMMAND for that repository.")
+    mappings = read_config()["mappings"]
     candidates = [path]
     if repo and canonical(repo["primary"]) != path:
         candidates.append(canonical(repo["primary"]))
+        # A broad parent-folder route must not hide the primary checkout's route.
+        explicit = any(is_within(path, canonical(m["path"]))
+                       and is_within(canonical(m["path"]), canonical(repo["path"]))
+                       and (host is None or m["host"] == host.lower()) for m in mappings)
+        if not explicit:
+            candidates.reverse()
     for candidate in candidates:
         matches = [m for m in mappings if is_within(candidate, canonical(m["path"]))
                    and (host is None or m["host"] == host.lower())]
@@ -194,19 +239,26 @@ def resolve(path, host=None, use_pin=False):
             matches.sort(key=lambda m: len(canonical(m["path"]).parts), reverse=True)
             longest = len(canonical(matches[0]["path"]).parts)
             best = [m for m in matches if len(canonical(m["path"]).parts) == longest]
-            if len(best) != 1:
+            if len({m["host"] for m in best}) != 1:
                 raise RouterError("This folder has mappings for multiple hosts. Pass --host to select one.")
-            mapping = best[0]
+            scoped = [m for m in best if m.get("repo")]
+            choices = [m for m in scoped if normalize_repo(m["repo"]) == target] if target and scoped else [m for m in best if not m.get("repo")]
+            if len(choices) != 1:
+                if target:
+                    raise RouterError(f"No account mapping for remote {target}. Use ghr map --repo {target} --account USER.")
+                raise RouterError("Select a remote-specific route with --remote NAME or --repo OWNER/REPO, or set a default folder route.")
+            mapping = choices[0]
             if repo and repo["remotes"] and not any(r["host"] == mapping["host"] for r in repo["remotes"]):
                 raise RouterError("The mapped hostname does not match any remote. SSH aliases need HTTPS remotes.")
             return dict(mapping, repository=repo, inherited=candidate != path)
     raise RouterError(f"No account mapping for {path}. Run ghr map {shlex.quote(str(path))} --account USER.")
 
 
-def add_mapping(path, host, account):
+def add_mapping(path, host, account, target=None):
     path = canonical(path)
     host = host.lower()
     validate_identity(host, account)
+    target = normalize_repo(target) if target is not None else None
     if not path.is_dir():
         raise RouterError("The folder must exist on this machine.")
     if not any(a["host"] == host and a["account"] == account and a["state"] == "success" for a in accounts()):
@@ -217,18 +269,25 @@ def add_mapping(path, host, account):
         path = canonical(repo["path"])
         if repo["remotes"] and not any(r["host"] == host for r in repo["remotes"]):
             raise RouterError("That hostname does not match this repository's remotes.")
+        if target and not any(r["host"] == host and normalize_repo(r["repo"]) == target for r in repo["remotes"]):
+            raise RouterError("That repository does not match a remote in this checkout.")
+    elif target:
+        raise RouterError("Remote-specific routes must belong to a Git checkout, not a parent folder.")
     mapping = {"path": str(path), "host": host, "account": account}
+    if target:
+        mapping["repo"] = target
     with edit_config() as data:
-        data["mappings"] = [m for m in data["mappings"] if (m["path"], m["host"]) != (str(path), host)]
+        data["mappings"] = [m for m in data["mappings"] if (m["path"], m["host"], m.get("repo")) != (str(path), host, target)]
         data["mappings"].append(mapping)
-        data["mappings"].sort(key=lambda m: (m["path"], m["host"]))
+        data["mappings"].sort(key=lambda m: (m["path"], m["host"], m.get("repo", "")))
     return mapping
 
 
-def remove_mapping(path, host):
+def remove_mapping(path, host, target=None):
     path = str(canonical(path))
+    target = normalize_repo(target) if target is not None else None
     with edit_config() as data:
-        data["mappings"] = [m for m in data["mappings"] if (m["path"], m["host"]) != (path, host.lower())]
+        data["mappings"] = [m for m in data["mappings"] if (m["path"], m["host"], m.get("repo")) != (path, host.lower(), target)]
 
 
 def helper_command():
@@ -254,7 +313,7 @@ def credential(action, stream, output):
         host = fields.get("host", "").lower()
         if fields.get("protocol") != "https":
             raise RouterError("ghr supports HTTPS Git authentication only.")
-        mapping = resolve(Path.cwd(), host, use_pin=True)
+        mapping = resolve(Path.cwd(), host, use_pin=True, target=fields.get("path"))
         token = token_for(host, mapping["account"])
         output.write(f"username={mapping['account']}\npassword={token}\n\n")
         return 0
@@ -293,6 +352,23 @@ def process_env(mapping):
     env["GHR_PINNED_PATH"] = mapping["repository"]["path"] if mapping.get("repository") else mapping["path"]
     env["GHR_PINNED_HOST"] = host
     env["GHR_PINNED_ACCOUNT"] = mapping["account"]
+    env["GHR_PINNED_OVERRIDE"] = "1" if mapping.get("override") else "0"
+    roots = [canonical(env["GHR_PINNED_PATH"])]
+    if mapping.get("repository"):
+        roots.append(canonical(mapping["repository"]["primary"]))
+    configured = [] if mapping.get("override") else read_config()["mappings"]
+    targets = {m["repo"] for m in configured if m.get("repo") and m["host"] == host
+               and any(is_within(root, canonical(m["path"])) for root in roots)}
+    pinned_remotes = []
+    for target in targets:
+        selected = resolve(env["GHR_PINNED_PATH"], host, target=target)
+        if selected.get("repo"):
+            pinned_remotes.append({"repo": normalize_repo(target), "account": selected["account"]})
+    env["GHR_PINNED_REMOTES"] = json.dumps(pinned_remotes)
+    env.pop("GH_REPO", None)
+    api_repo = mapping.get("api_repo") or mapping.get("repo")
+    if api_repo:
+        env["GH_REPO"] = f"{host}/{normalize_repo(api_repo)}"
     try:
         count = int(env.get("GIT_CONFIG_COUNT", "0"))
     except ValueError as error:
@@ -328,6 +404,11 @@ def scan(path, depth=5):
                     repo["account"] = route["account"]
                 except RouterError:
                     repo["account"] = None
+                for remote in repo["remotes"]:
+                    try:
+                        remote["account"] = resolve(root, remote["host"], target=remote["repo"])["account"]
+                    except RouterError:
+                        remote["account"] = None
                 found.append(repo)
             dirs[:] = []
         else:

@@ -38,7 +38,8 @@ class RouterTests(unittest.TestCase):
         self.environ = patch.dict(os.environ, env)
         self.environ.start()
         self.addCleanup(self.environ.stop)
-        for key in (*core.TOKEN_VARS, "GHR_PINNED_PATH", "GHR_PINNED_HOST", "GHR_PINNED_ACCOUNT", "GIT_CONFIG_COUNT"):
+        for key in (*core.TOKEN_VARS, "GHR_PINNED_PATH", "GHR_PINNED_HOST", "GHR_PINNED_ACCOUNT",
+                    "GHR_PINNED_REMOTES", "GHR_PINNED_OVERRIDE", "GIT_CONFIG_COUNT"):
             os.environ.pop(key, None)
 
     def run_cmd(self, *args, cwd=None, env=None, input=None, check=True):
@@ -245,6 +246,96 @@ class RouterTests(unittest.TestCase):
                     "https://example.ts.net:invalid", "https://example.ts.net:0", "https://example.ts.net\n"):
             with self.subTest(url=url), self.assertRaises(core.RouterError):
                 make_server(0, public_url=url)
+
+    def migration(self):
+        path = self.repo("migration", owner="source")
+        self.run_cmd("git", "-C", str(path), "remote", "add", "destination", "https://github.com/destination/migration.git")
+        core.add_mapping(path, "github.com", "user-2")
+        core.add_mapping(path, "github.com", "user-1", "source/migration")
+        core.add_mapping(path, "github.com", "user-2", "destination/migration")
+        core.setup_helper("github.com", path=path)
+        return path
+
+    def fill_target(self, path, target, env=None, check=True):
+        return self.run_cmd("git", "credential", "fill", cwd=path, env=env, check=check,
+                            input=f"protocol=https\nhost=github.com\npath={target}.git\n\n")
+
+    def test_one_migration_checkout_routes_concurrent_source_and_destination_credentials(self):
+        path = self.migration()
+        targets = [("source/migration", "user-1"), ("destination/migration", "user-2")] * 8
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda item: (self.fill_target(path, item[0]), item[1]), targets))
+        for result, account in results:
+            self.assertIn("username=" + account, result.stdout)
+            self.assertIn("password=fixture-token-" + account, result.stdout)
+        self.assertEqual(core.resolve(path)["account"], "user-2")
+        self.assertEqual(len(core.read_config()["mappings"]), 3)
+
+    def test_migration_process_pins_each_remote_and_explicit_account_override_is_temporary(self):
+        path = self.migration()
+        env = core.process_env(core.resolve(path))
+        core.add_mapping(path, "github.com", "user-2", "source/migration")
+        core.add_mapping(path, "github.com", "user-1")
+        self.assertIn("username=user-1", self.fill_target(path, "source/migration", env).stdout)
+        self.assertIn("username=user-2", self.fill_target(path, "destination/migration", env).stdout)
+        unknown = self.fill_target(path, "unknown/repo", env, check=False)
+        self.assertNotEqual(unknown.returncode, 0)
+        self.assertIn("No account mapping for this remote", unknown.stderr)
+        overridden = self.cli("exec", "--path", str(path), "--account", "user-1", "--", "git", "credential", "fill",
+                              input="protocol=https\nhost=github.com\npath=destination/migration.git\n\n")
+        self.assertIn("username=user-1", overridden.stdout)
+        self.assertEqual(core.resolve(path, "github.com", target="destination/migration")["account"], "user-2")
+
+    def test_remote_selection_routes_gh_token_and_target_repository(self):
+        path = self.migration()
+        for remote, user in (("origin", "user-1"), ("destination", "user-2")):
+            result = self.cli("gh", "--path", str(path), "--remote", remote, "--", "api", "/user")
+            self.assertEqual(result.stdout.strip(), "fixture-token-" + user)
+        selected = self.cli("exec", "--path", str(path), "--remote", "origin", "--", sys.executable,
+                            "-c", "import os; print(os.environ['GH_REPO'])")
+        self.assertEqual(selected.stdout.strip(), "github.com/source/migration")
+        env = core.process_env(core.resolve(path, "github.com", target="source/migration"))
+        nested = self.cli("exec", "--path", str(path), "--", sys.executable, "-c",
+                          "import os; print(os.environ.get('GH_REPO', 'unset'))", env=env)
+        self.assertEqual(nested.stdout.strip(), "unset")
+        ordinary = self.repo("ordinary", owner="destination")
+        core.add_mapping(ordinary, "github.com", "user-2")
+        result = self.cli("exec", "--path", str(ordinary), "--remote", "origin", "--", sys.executable,
+                          "-c", "import os; print(os.environ['GH_REPO'])")
+        self.assertEqual(result.stdout.strip(), "github.com/destination/ordinary")
+
+    def test_named_remote_with_different_fetch_and_push_targets_requires_exact_repo(self):
+        path = self.migration()
+        self.run_cmd("git", "-C", str(path), "remote", "set-url", "--push", "origin", "https://github.com/destination/migration.git")
+        with self.assertRaises(core.RouterError):
+            core.remote_target(path, "origin")
+        self.assertEqual(self.cli("gh", "--path", str(path), "--repo", "source/migration", "--", "api", "/user").stdout.strip(), "fixture-token-user-1")
+
+    def test_remote_rule_removal_does_not_remove_folder_default_or_other_remotes(self):
+        path = self.migration()
+        core.remove_mapping(path, "github.com", "SOURCE/MIGRATION.git")
+        self.assertEqual(len(core.read_config()["mappings"]), 2)
+        self.assertEqual(core.resolve(path)["account"], "user-2")
+        denied = self.fill_target(path, "source/migration", check=False)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertIn("No account mapping for remote", denied.stderr)
+
+    def test_remote_routes_inherit_into_worktree_even_with_a_broad_parent_route(self):
+        primary = self.migration()
+        core.add_mapping(self.root, "github.com", "user-1")
+        self.run_cmd("git", "-C", str(primary), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "fixture")
+        worktree = self.root / "migration-worktree"
+        self.run_cmd("git", "-C", str(primary), "worktree", "add", "-b", "migration-agent", str(worktree))
+        self.assertEqual(core.resolve(worktree)["account"], "user-2")
+        self.assertIn("username=user-1", self.fill_target(worktree, "source/migration").stdout)
+        self.assertIn("username=user-2", self.fill_target(worktree, "destination/migration").stdout)
+
+    def test_remote_specific_rule_must_match_a_checkout_remote(self):
+        path = self.repo("remote-validation")
+        for target in ("unknown/repository", "../repo", "owner/repo/extra", ""):
+            with self.subTest(target=target), self.assertRaises(core.RouterError):
+                core.add_mapping(path, "github.com", "user-1", target)
+        self.assertEqual(core.read_config()["mappings"], [])
 
 
 if __name__ == "__main__":

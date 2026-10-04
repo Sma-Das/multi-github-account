@@ -14,7 +14,7 @@ class Ghr < Formula
   end
 
   test do
-    assert_match "0.2.0", shell_output("#{bin}/ghr --version")
+    assert_match "0.3.0", shell_output("#{bin}/ghr --version")
     assert_match "[]", shell_output("GHR_CONFIG=#{testpath}/config.json #{bin}/ghr list")
   end
 end

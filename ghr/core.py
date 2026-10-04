@@ -292,6 +292,12 @@ def remove_mapping(path, host, target=None):
 
 def helper_command():
     # The module's installation path must work even without a venv on PATH.
+    installed = str(Path(__file__).resolve())
+    if "/Cellar/ghr/" in installed:
+        prefix = installed.split("/Cellar/ghr/", 1)[0]
+        stable_python = Path(prefix) / "opt/ghr/libexec/bin/python"
+        if stable_python.is_file():
+            return "!" + shlex.join([str(stable_python), "-m", "ghr", "credential"])
     root = str(Path(__file__).resolve().parent.parent)
     return "!" + shlex.join([sys.executable, "-c",
         f"import sys; sys.path.insert(0, {root!r}); from ghr.cli import main; main()",

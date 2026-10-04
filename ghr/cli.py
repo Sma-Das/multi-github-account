@@ -2,28 +2,33 @@ import argparse
 import json
 import os
 import sys
+from urllib.parse import urlencode
 
 from . import __version__
 from .core import (RouterError, accounts, add_mapping, canonical, credential,
                    process_env, read_config, remote_target, remove_mapping, repository,
                    resolve, scan, setup_helper, normalize_repo, validate_identity)
+from .machines import add_machine, list_machines, remote_request, remove_machine
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="ghr", description="Route GitHub credentials by folder, without gh auth switch.")
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("accounts", help="List stored gh accounts without showing tokens")
-    sub.add_parser("list", help="List folder mappings")
+    for name, help_text in (("accounts", "List stored gh accounts without showing tokens"), ("list", "List folder mappings")):
+        command = sub.add_parser(name, help=help_text)
+        command.add_argument("--machine", help="Read from a paired computer")
     mapping = sub.add_parser("map", help="Map a checkout or parent folder to a stored account")
     mapping.add_argument("path", nargs="?", default=".")
     mapping.add_argument("--account", required=True)
+    mapping.add_argument("--machine", help="Save the route on a paired computer")
     mapping.add_argument("--host")
     group = mapping.add_mutually_exclusive_group()
     group.add_argument("--remote", help="Bind the account to a named remote's repository")
     group.add_argument("--repo", help="Bind the account to an exact OWNER/REPO target")
     unmap = sub.add_parser("unmap", help="Remove a folder mapping")
     unmap.add_argument("path", nargs="?", default=".")
+    unmap.add_argument("--machine")
     unmap.add_argument("--host")
     group = unmap.add_mutually_exclusive_group()
     group.add_argument("--remote")
@@ -51,12 +56,49 @@ def main(argv=None):
     helper.add_argument("action", choices=("get", "store", "erase"))
     finder = sub.add_parser("scan", help="Find checkouts under a folder")
     finder.add_argument("path", nargs="?", default=".")
+    finder.add_argument("--machine")
+    machines = sub.add_parser("machines", help="Pair and manage other computers' dashboards")
+    machine_commands = machines.add_subparsers(dest="machine_action", required=True)
+    machine_commands.add_parser("list")
+    pair = machine_commands.add_parser("add")
+    pair.add_argument("name")
+    pair.add_argument("--url", required=True, help="Full dashboard session URL, including its fragment")
+    forget = machine_commands.add_parser("remove")
+    forget.add_argument("name")
     ui = sub.add_parser("ui", help="Open the local account mapping dashboard")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--no-browser", action="store_true")
+    ui.add_argument("--persistent-session", action="store_true", help="Keep the dashboard session across restarts for paired computers")
     ui.add_argument("--public-url", help="Trusted HTTPS origin of a reverse proxy, such as Tailscale Serve")
     args = parser.parse_args(argv)
     try:
+        if args.command == "machines":
+            if args.machine_action == "list":
+                result = list_machines()
+            elif args.machine_action == "add":
+                result = add_machine(args.name, args.url)
+            else:
+                remove_machine(args.name)
+                result = {"removed": args.name}
+            print(json.dumps(result, indent=2))
+            return
+        if getattr(args, "machine", None):
+            if args.command in ("accounts", "list"):
+                data = remote_request(args.machine, "/api/state")
+                result = data["accounts" if args.command == "accounts" else "mappings"]
+            elif args.command == "scan":
+                result = remote_request(args.machine, "/api/scan?" + urlencode({"path": args.path}))["repositories"]
+            else:
+                if args.remote:
+                    raise RouterError("Remote management uses --repo OWNER/REPO. A remote name is resolved on its own computer.")
+                data = {"path": args.path, "host": args.host or "github.com"}
+                if args.repo:
+                    data["repo"] = args.repo
+                if args.command == "map":
+                    data["account"] = args.account
+                result = remote_request(args.machine, "/api/mappings", "PUT" if args.command == "map" else "DELETE", data)
+            print(json.dumps(result, indent=2))
+            return
         if args.command == "accounts":
             result = accounts()
         elif args.command == "list":
@@ -80,7 +122,7 @@ def main(argv=None):
             result = scan(args.path)
         elif args.command == "ui":
             from .server import serve
-            serve(args.port, not args.no_browser, args.public_url)
+            serve(args.port, not args.no_browser, args.public_url, args.persistent_session)
             return
         else:
             command = args.args

@@ -1,14 +1,19 @@
 """Loopback-only dashboard. The browser never receives GitHub credentials."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import fcntl
 import json
+import os
 from pathlib import Path
 import secrets
+import socket
 from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
 from .core import (RouterError, accounts, add_mapping, config_path, read_config,
                    remove_mapping, scan, validate_identity)
+from . import __version__
+from .machines import add_machine, list_machines, remote_request, remove_machine
 
 
 def trusted_origin(public_url):
@@ -33,9 +38,33 @@ def trusted_origin(public_url):
     return f"https://{host}"
 
 
-def make_server(port=8765, public_url=None):
+def session_secret(persistent=False):
+    if not persistent:
+        return secrets.token_urlsafe(32)
+    path = config_path().parent / "ui-session"
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_fd = os.open(str(path) + ".lock", os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(lock_fd, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            value = path.read_text().strip()
+            if len(value) != 43 or not all(c.isalnum() or c in "_-" for c in value) or not value.isascii():
+                raise RouterError("Invalid persistent dashboard session. Repair or remove the ui-session file.")
+            os.chmod(path, 0o600)
+            return value
+        value = secrets.token_urlsafe(32)
+        with os.fdopen(fd, "w") as stream:
+            stream.write(value + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        return value
+
+
+def make_server(port=8765, public_url=None, persistent=False):
     public_origin = trusted_origin(public_url)
-    session = secrets.token_urlsafe(32)
+    session = session_secret(persistent)
     assets = Path(__file__).parent / "web"
 
     class Handler(BaseHTTPRequestHandler):
@@ -83,7 +112,17 @@ def make_server(port=8765, public_url=None):
                 try:
                     if url.path == "/api/state":
                         self.respond(200, {"accounts": accounts(), "mappings": read_config()["mappings"],
-                                           "config": str(config_path()), "home": str(Path.home())})
+                                           "config": str(config_path()), "home": str(Path.home()),
+                                           "version": __version__, "machine": {"hostname": socket.gethostname()}})
+                    elif url.path == "/api/machines":
+                        self.respond(200, {"machines": list_machines()})
+                    elif url.path.startswith("/api/machines/"):
+                        parts = url.path.split("/")
+                        if len(parts) != 5 or parts[4] not in ("state", "scan"):
+                            self.respond(404, {"error": "Unknown machine endpoint."})
+                            return
+                        target = "/api/" + parts[4] + ("?" + url.query if url.query else "")
+                        self.respond(200, remote_request(parts[3], target))
                     elif url.path == "/api/scan":
                         query = parse_qs(url.query)
                         path = query.get("path", [str(Path.home() / "GitHub")])[0]
@@ -108,7 +147,10 @@ def make_server(port=8765, public_url=None):
         def mutate(self, remove=False):
             if not self.authorized():
                 return
-            if urlsplit(self.path).path != "/api/mappings":
+            endpoint = urlsplit(self.path).path
+            parts = endpoint.split("/")
+            forwarded = len(parts) == 5 and parts[:3] == ["", "api", "machines"] and parts[4] == "mappings"
+            if endpoint not in ("/api/mappings", "/api/machines") and not forwarded:
                 self.respond(404, {"error": "Unknown endpoint."})
                 return
             try:
@@ -117,9 +159,23 @@ def make_server(port=8765, public_url=None):
                     self.respond(400, {"error": "Expected a small JSON request."})
                     return
                 data = json.loads(self.rfile.read(size))
+                if endpoint == "/api/machines":
+                    if not isinstance(data, dict) or not isinstance(data.get("name"), str):
+                        raise ValueError("Missing machine name.")
+                    if remove:
+                        remove_machine(data["name"])
+                        self.respond(200, {"removed": True})
+                    else:
+                        if not isinstance(data.get("url"), str):
+                            raise ValueError("Missing dashboard URL.")
+                        self.respond(200, add_machine(data["name"], data["url"]))
+                    return
                 fields = ("path", "host") if remove else ("path", "host", "account")
                 if not isinstance(data, dict) or not all(isinstance(data.get(k), str) and data[k] for k in fields):
                     raise ValueError("Missing mapping fields.")
+                if forwarded:
+                    self.respond(200, remote_request(parts[3], "/api/mappings", "DELETE" if remove else "PUT", data))
+                    return
                 if remove:
                     remove_mapping(data["path"], data["host"], data.get("repo"))
                     self.respond(200, {"removed": True})
@@ -144,8 +200,8 @@ def make_server(port=8765, public_url=None):
     return server, f"{origin}/#{session}"
 
 
-def serve(port=8765, open_browser=True, public_url=None):
-    server, url = make_server(port, public_url)
+def serve(port=8765, open_browser=True, public_url=None, persistent=False):
+    server, url = make_server(port, public_url, persistent)
     print(f"Account dashboard: {url}", flush=True)
     print("Dashboard session. Press Ctrl-C to stop.", flush=True)
     if open_browser:

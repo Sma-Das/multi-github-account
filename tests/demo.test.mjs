@@ -85,3 +85,17 @@ test('remote-scoped routes coexist with defaults and remove independently', asyn
   assert.equal((await api.request('/api/state')).mappings.length, 6);
   assert.equal((await api.request('/api/scan?path=~/GitHub/work/api-service')).repositories[0].remotes[0].account, 'alex-work');
 });
+
+test('demo computers have separate folders and independently persisted routes', async () => {
+  const api = browser();
+  const roster = await api.request('/api/machines');
+  assert.equal(roster.machines.length, 2);
+  const remote = await api.request('/api/machines/build-server/state');
+  assert.equal(remote.home, '/home/demo');
+  await api.request('/api/machines/build-server/mappings', { method: 'PUT', body: JSON.stringify({ path: '~/GitHub/sandbox', host: 'github.com', account: 'alex-dev' }) });
+  assert.equal((await api.request('/api/machines/build-server/state')).mappings.length, 7);
+  assert.equal((await api.request('/api/machines/work-mac/state')).mappings.length, 6);
+  assert.equal((await api.request('/api/state')).mappings.length, 6);
+  api.reset();
+  assert.equal((await api.request('/api/machines/build-server/state')).mappings.length, 6);
+});

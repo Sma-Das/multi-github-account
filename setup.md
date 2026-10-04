@@ -8,6 +8,8 @@ Use the user's existing account and folder choices. Ask for missing choices when
 
 Check the operating system and whether `ghr`, `gh`, Git, Homebrew, Python, pipx, and Tailscale are available. Reuse an existing working installation. Read the [README](https://github.com/Sma-Das/multi-github-account/blob/main/README.md) for the current commands and behavior.
 
+For SSH setup, inspect the effective SSH configuration and use the user's exact alias. An alias such as `sma.local` may map to a LAN address, another username, and a specific identity file. On macOS, include Homebrew's binary directory in the command environment. Keychain credentials can be available in the logged-in GUI session while unavailable over SSH; run the dashboard and seeding service in that user's GUI launchd domain when that is the case.
+
 If the user already supplied workspace folders, scan those. Otherwise, look for existing workspace folders such as `~/GitHub`, `~/Projects`, or `~/work`, and ask which ones they want managed. Keep discovery within those folders.
 
 ## 2. Install the router
@@ -145,6 +147,8 @@ tailscale serve --bg http://127.0.0.1:8765
 If Serve prints an enablement link, give it to the user and resume once they have completed that step. Preserve existing Serve services. If HTTPS port 443 is already assigned, choose a separate supported HTTPS port and include that port in `--public-url` and `tailscale serve --https=PORT`.
 
 For a persistent background preview, use the machine's process manager or a detached process with a local log. Capture the actual session URL printed by `ghr ui`; the fragment is required to authenticate the dashboard. Give that full URL to the user. Check that both the page and authenticated API respond at the selected address. The receiving device must be connected to the tailnet and allowed to reach the host.
+
+If the user has multiple computers, repeat installation and account verification on each one. Start paired dashboards with `--persistent-session`, then use `ghr machines add NAME --url FULL_SESSION_URL` on their chosen hub. Verify `ghr accounts --machine NAME` and `ghr list --machine NAME`, and switch computers in the dashboard. Use quoted remote paths such as `'~/Projects'`; a shell-expanded home path from the hub is not the other computer's home. Keep GitHub tokens on the machine owning the repositories.
 
 ## 7. Set up agent usage and report the result
 

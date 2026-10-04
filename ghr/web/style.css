@@ -103,6 +103,10 @@ svg.icon { display: inline-block; width: 18px; height: 18px; flex: 0 0 auto; fil
 .breadcrumb-divider { color: var(--border-strong); }
 #breadcrumb-current { color: var(--text); }
 .topbar-actions { display: flex; align-items: center; gap: 17px; }
+.machine-picker select { max-width: 170px; font-size: 11px; padding: 5px 8px; }
+#machine-form { margin-top: 25px; }
+#machine-form label { display: block; margin-top: 17px; }
+#machine-form input { display: block; margin-top: 8px; width: 100%; padding: 10px 11px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); font-size: 12px; }
 .session-badge { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 1px solid transparent; background: transparent; color: var(--muted); border-radius: 5px; }
 .icon-button:hover { background: var(--surface-hover); color: var(--text); }
@@ -274,6 +278,8 @@ dialog > p { font-size: 11px; color: var(--muted); margin-top: 7px; }
   .repo-controls { margin-left: 30px; }
 }
 @media (max-width: 760px) {
+  .topbar-actions .session-badge { display: none; }
+  .machine-picker select { max-width: 125px; }
   .demo-banner { padding: 11px 21px; flex-wrap: wrap; gap: 9px; }
   .sidebar { transform: translateX(-100%); width: 224px; transition: transform .18s ease; }
   .app-shell { margin-left: 0; }
@@ -297,6 +303,7 @@ dialog > p { font-size: 11px; color: var(--muted); margin-top: 7px; }
   .quick-start .button { margin-left: 47px; }
 }
 @media (max-width: 460px) {
+  .breadcrumb > span:first-of-type, .breadcrumb-divider { display: none; }
   .demo-banner { padding: 11px 16px; font-size: 10px; }
   main { padding: 25px 16px 20px; }
   .topbar { padding: 0 16px; }

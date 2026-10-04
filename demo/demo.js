@@ -1,7 +1,6 @@
 /* Standalone mock API. No fetch, GitHub tokens, filesystem access, or server. */
 (() => {
-  const HOME = '/Users/demo';
-  const STORAGE_KEY = 'ghr-demo-v1';
+  function createComputer(HOME, STORAGE_KEY, hostname) {
   const clone = value => JSON.parse(JSON.stringify(value));
   const accounts = [
     { host: 'github.com', account: 'alex-dev', state: 'success', active: true, source: 'demo' },
@@ -84,7 +83,7 @@
     const url = new URL(path, 'https://demo.invalid');
     const method = options.method || 'GET';
     if (method === 'GET' && url.pathname === '/api/state') {
-      return clone({ accounts, mappings, config: `${HOME}/.config/ghr/config.json`, home: HOME });
+      return clone({ accounts, mappings, config: `${HOME}/.config/ghr/config.json`, home: HOME, machine: { hostname } });
     }
     if (method === 'GET' && url.pathname === '/api/scan') {
       const root = normalizePath(url.searchParams.get('path') || `${HOME}/GitHub`);
@@ -126,5 +125,26 @@
   }
 
   function reset() { mappings = clone(seeds); persist(); }
-  globalThis.GHR_DEMO = Object.freeze({ request, reset });
+  return { request, reset };
+  }
+  const computers = {
+    local: createComputer('/Users/demo', 'ghr-demo-v1', 'demo-mac'),
+    'work-mac': createComputer('/Users/work', 'ghr-demo-work-mac-v1', 'work-mac'),
+    'build-server': createComputer('/home/demo', 'ghr-demo-build-server-v1', 'build-server'),
+  };
+  globalThis.GHR_DEMO = Object.freeze({
+    request(path, options = {}) {
+      if (path === '/api/machines') return Promise.resolve({ machines: [
+        { name: 'work-mac', url: 'https://work-mac.demo.example' },
+        { name: 'build-server', url: 'https://build-server.demo.example' },
+      ] });
+      const remote = path.match(/^\/api\/machines\/([^/]+)(\/.*)$/);
+      if (remote) {
+        if (!computers[remote[1]]) return Promise.reject(new Error('Unknown demo computer.'));
+        return computers[remote[1]].request('/api' + remote[2], options);
+      }
+      return computers.local.request(path, options);
+    },
+    reset() { Object.values(computers).forEach(computer => computer.reset()); },
+  });
 })();

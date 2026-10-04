@@ -130,7 +130,7 @@ This replaces the helper list for `https://github.com`, enables `credential.useH
 
 An existing repository-specific credential helper can override a global helper. In that repository, run `ghr setup`, or use `ghr exec`, whose process-local configuration takes precedence.
 
-The installed helper records the Python installation path. Run setup again if you move or replace that installation.
+Homebrew helpers use the stable `opt/ghr` path so HEAD upgrades do not leave stale Cellar paths. Other installations record their Python installation path; run setup again if you move that installation.
 
 `ghr map` saves a route. It does not edit Git configuration. `ghr exec` works without running `ghr setup`.
 
@@ -233,6 +233,35 @@ If Serve is disabled, Tailscale prints a link to enable it for your tailnet. Ope
 `--public-url` adds one exact trusted HTTPS origin and host. The backend still binds only to loopback, still checks its session secret, and does not trust arbitrary forwarded headers. Tailscale Serve limits network access to your tailnet.
 
 Stop this Serve endpoint with `tailscale serve --https=443 off`. Mapping changes apply to folders and accounts on the hosting machine.
+
+## Multiple computers
+
+Pair other running dashboards with the computer you use as a management hub. Accounts, paths, Git settings, and remote bindings belong to their own computer. The hub forwards management requests; GitHub credentials are read and used on the computer where the agent runs.
+
+On each computer, start a dashboard with a stable session and expose it through Tailscale Serve:
+
+```sh
+ghr ui --no-browser --persistent-session --public-url https://COMPUTER.TAILNET.ts.net
+tailscale serve --bg http://127.0.0.1:8765
+```
+
+On the hub, register its full session URL:
+
+```sh
+ghr machines add work-mac --url 'https://COMPUTER.TAILNET.ts.net/#SESSION'
+ghr machines list
+ghr accounts --machine work-mac
+ghr scan --machine work-mac '~/Projects'
+ghr map --machine work-mac '~/Projects/migration' --account USER --repo OWNER/REPO
+```
+
+Quote remote paths containing `~` so your local shell does not expand them to its own home directory. Use `--repo OWNER/REPO` for remote management; remote aliases are resolved locally on the computer that owns the checkout.
+
+The dashboard's **Active computer** selector switches accounts, routes, scans, and generated commands together. **Pair a computer** registers or updates a dashboard connection. An unavailable or expired session is shown as unavailable, with no fallback to another computer. Use `ghr machines remove NAME` to forget a connection.
+
+Pairing secrets are dashboard session keys, not GitHub tokens. They are stored in `~/.config/ghr/machines.json` with owner-only permissions and are omitted from machine lists and browser responses. `--persistent-session` stores the dashboard's own key in `ui-session` beside the routing config so connections survive restarts. Agents still launch on the computer owning the checkout, using that computer's `ghr exec` command.
+
+The public demo includes separate sample computers with independent browser-local route data.
 
 ## Enterprise and SSH
 

@@ -14,6 +14,10 @@ let currentView = 'overview';
 let configPath = '';
 let dialogReturnFocus = null;
 const mobileViewport = matchMedia('(max-width: 760px)');
+let currentMachine = 'local';
+let pendingWrites = 0;
+let machineReady = false;
+const initialRepositories = $('repositories').firstElementChild.cloneNode(true);
 
 function el(tag, text, cls) {
   const node = document.createElement(tag);
@@ -31,11 +35,12 @@ function icon(name) {
   return svg;
 }
 function notice(message, error = false) {
+  if (!message) return;
   $('notice-text').textContent = message;
   $('notice').classList.toggle('error', error);
   $('notice').hidden = false;
 }
-async function api(path, options = {}) {
+async function hubApi(path, options = {}) {
   if (demo) return demo.request(path, options);
   const response = await fetch(path, {
     ...options,
@@ -44,6 +49,60 @@ async function api(path, options = {}) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed.');
   return data;
+}
+async function api(path, options = {}) {
+  const machine = currentMachine;
+  const target = machine === 'local' ? path : `/api/machines/${encodeURIComponent(machine)}/${path.slice(5)}`;
+  const writing = options.method && options.method !== 'GET';
+  if (writing) { pendingWrites++; $('machine-select').disabled = true; $('pair-machine').disabled = true; }
+  try {
+    const data = await hubApi(target, options);
+    if (currentMachine !== machine) throw new Error('');
+    return data;
+  } finally {
+    if (writing) { pendingWrites--; $('machine-select').disabled = pendingWrites > 0; $('pair-machine').disabled = pendingWrites > 0; }
+  }
+}
+async function refreshMachines() {
+  const { machines } = await hubApi('/api/machines');
+  const local = el('option', 'This computer');
+  local.value = 'local';
+  $('machine-select').replaceChildren(local);
+  for (const machine of machines) {
+    const option = el('option', machine.name);
+    option.value = machine.name;
+    option.title = machine.url;
+    $('machine-select').append(option);
+  }
+  $('machine-select').value = currentMachine;
+}
+async function selectMachine(name) {
+  if (pendingWrites) return;
+  currentMachine = name;
+  machineReady = false;
+  configPath = '';
+  selectedAccount = '';
+  scannedPath = null;
+  $('scan-path').value = '';
+  $('route-search').value = '';
+  state = { accounts: [], mappings: [] };
+  $('nav-route-count').textContent = '—';
+  $('repositories').replaceChildren(initialRepositories.cloneNode(true));
+  $('scan-count').textContent = 'Not scanned yet';
+  document.querySelectorAll('.view').forEach(node => { node.hidden = true; });
+  document.querySelectorAll('[data-new-route]').forEach(button => { button.disabled = true; });
+  $('notice').hidden = true;
+  $('sync-status').textContent = `Connecting to ${name === 'local' ? 'this computer' : name}…`;
+  try {
+    await refresh();
+    machineReady = true;
+    setView(currentView);
+    document.querySelectorAll('[data-new-route]').forEach(button => { button.disabled = false; });
+  } catch (error) {
+    if (name !== currentMachine) return;
+    $('sync-status').textContent = 'Computer unavailable';
+    notice(error.message, true);
+  }
 }
 function identityKey(identity) { return `${identity.host}/${identity.account}`; }
 function shortPath(path) {
@@ -96,9 +155,9 @@ function setView(view) {
     if (active) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
-  $('view-overview').hidden = !['overview', 'routes'].includes(view);
-  $('view-repositories').hidden = view !== 'repositories';
-  $('view-agents').hidden = view !== 'agents';
+  $('view-overview').hidden = !machineReady || !['overview', 'routes'].includes(view);
+  $('view-repositories').hidden = !machineReady || view !== 'repositories';
+  $('view-agents').hidden = !machineReady || view !== 'agents';
   document.querySelectorAll('.overview-only').forEach(node => { node.hidden = view !== 'overview'; });
   setMenu(false);
 }
@@ -248,8 +307,20 @@ async function refresh() {
   renderFilters();
   renderMappings();
   renderAgentRoutes();
+  const selectedOption = [...$('machine-select').options].find(o => o.value === currentMachine);
+  if (currentMachine === 'local' && selectedOption && state.machine?.hostname) selectedOption.textContent = state.machine.hostname;
   accountOptions($('account'));
-  if (!$('scan-path').value) $('scan-path').value = `${state.home}/GitHub`;
+  if (!$('scan-path').value) {
+    const paths = state.mappings.map(m => m.path.split('/'));
+    let shared = paths[0] || [];
+    for (const path of paths.slice(1)) {
+      let length = 0;
+      while (length < shared.length && shared[length] === path[length]) length++;
+      shared = shared.slice(0, length);
+    }
+    const workspace = shared.join('/');
+    $('scan-path').value = workspace.startsWith(state.home + '/') ? workspace : `${state.home}/GitHub`;
+  }
   if (scannedPath) {
     try {
       const { repositories } = await api(`/api/scan?path=${encodeURIComponent(scannedPath)}`);
@@ -258,6 +329,7 @@ async function refresh() {
   }
 }
 function openRoute(mapping = null) {
+  if (!machineReady) { notice('Choose an available computer before creating a route.', true); return; }
   dialogReturnFocus = document.activeElement;
   $('dialog-title').textContent = mapping ? 'Edit folder route' : 'Create a folder route';
   $('folder').value = mapping ? mapping.path : '';
@@ -399,7 +471,11 @@ $('mapping-form').addEventListener('submit', async (event) => {
 });
 $('refresh').addEventListener('click', async () => {
   $('refresh').disabled = true;
-  try { await refresh(); notice('Accounts and routes are up to date.'); }
+  try {
+    await refreshMachines();
+    await selectMachine(currentMachine);
+    if (!$('view-overview').hidden || !$('view-repositories').hidden || !$('view-agents').hidden) notice('Accounts and routes are up to date.');
+  }
   catch (error) { notice(error.message, true); }
   finally { $('refresh').disabled = false; }
 });
@@ -428,7 +504,7 @@ document.querySelectorAll('[data-copy]').forEach(button => button.addEventListen
 document.addEventListener('keydown', (event) => {
   const typing = event.target.closest('input, select, textarea, [contenteditable="true"]');
   if (event.key === 'Escape' && !$('route-dialog').open) setMenu(false);
-  if (typing || event.metaKey || event.ctrlKey || event.altKey || $('route-dialog').open) return;
+  if (typing || event.metaKey || event.ctrlKey || event.altKey || $('route-dialog').open || $('machine-dialog').open) return;
   if (event.key.toLowerCase() === 'n') { event.preventDefault(); openRoute(); }
   if (event.key === '/') {
     event.preventDefault();
@@ -451,4 +527,29 @@ if (demo) {
   });
 }
 setMenu(false);
-refresh().catch(error => { $('sync-status').textContent = 'Could not connect'; notice(error.message, true); });
+$('machine-select').addEventListener('change', () => selectMachine($('machine-select').value));
+$('pair-machine').addEventListener('click', () => {
+  if (demo) { notice('The demo includes sample computers. Use the computer selector to explore them.'); return; }
+  $('machine-error').hidden = true;
+  $('machine-url').value = '';
+  $('machine-dialog').showModal();
+});
+['close-machine-dialog', 'cancel-machine-dialog'].forEach(id => $(id).addEventListener('click', () => $('machine-dialog').close()));
+$('machine-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  $('save-machine').disabled = true;
+  $('machine-error').hidden = true;
+  try {
+    const name = $('machine-name').value.trim();
+    await hubApi('/api/machines', { method: 'PUT', body: JSON.stringify({ name, url: $('machine-url').value.trim() }) });
+    $('machine-url').value = '';
+    $('machine-dialog').close();
+    await refreshMachines();
+    $('machine-select').value = name;
+    await selectMachine(name);
+  } catch (error) {
+    $('machine-error').textContent = error.message;
+    $('machine-error').hidden = false;
+  } finally { $('save-machine').disabled = false; }
+});
+refreshMachines().then(() => selectMachine('local')).catch(error => { $('sync-status').textContent = 'Could not connect'; notice(error.message, true); });

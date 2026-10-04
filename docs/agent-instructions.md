@@ -2,6 +2,8 @@
 
 This machine uses `ghr` to route GitHub credentials by repository folder.
 
+Computers have independent account stores and folder paths. Use `ghr machines list` to inspect paired dashboards, and `ghr accounts --machine NAME`, `ghr list --machine NAME`, or `ghr scan --machine NAME '~/Projects'` for remote management. Agent and Git commands execute on the computer that owns the checkout.
+
 - Run `ghr whoami --path /absolute/path/to/repo` to inspect the selected account and remotes.
 - For API operations use `ghr gh --path /absolute/path/to/repo -- pr create`, or the corresponding `gh` subcommand.
 - For HTTPS Git operations use `ghr exec --path /absolute/path/to/repo -- git push`.

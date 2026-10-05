@@ -15,9 +15,6 @@ for (const filename of ['index.html', 'style.css', 'app.js', 'favicon.svg']) {
     const replacements = [
       ['<title>GitHub account router</title>', '<title>GitHub account router · Interactive demo</title>\n  <meta name="description" content="Try GitHub account routing with sample accounts, repositories, and agents. No sign-in required.">'],
       ['  <script src="/app.js" defer></script>', '  <script src="/demo.js" defer></script>\n  <script src="/app.js" defer></script>'],
-      ['My workspace<span>Account routing</span>', 'Demo workspace<span>Sample accounts</span>'],
-      ['Your credentials stay here.<span>Stored by GitHub CLI.</span>', 'Sample data only.<span>No GitHub sign-in required.</span>'],
-      ['Scan a workspace to inspect upstream remotes and assign accounts.', 'Explore sample repositories and try assigning accounts.'],
       ['Local configuration<svg', 'Sample configuration<svg'],
       ['    <main id="main"', `    <div class="demo-banner" aria-label="Demo information"><div><span class="demo-label">Demo</span><span>Mock data. Changes stay in this browser.</span></div><div class="demo-actions"><button id="reset-demo" class="text-button"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>Reset demo</button><a class="button subtle" href="https://github.com/Sma-Das/multi-github-account#install" target="_blank" rel="noreferrer">Install ghr<svg class="icon" aria-hidden="true"><use href="#i-link"/></svg></a></div></div>\n    <main id="main"`],
     ];

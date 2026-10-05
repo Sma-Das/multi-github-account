@@ -146,17 +146,10 @@ function setMenu(open) {
   $('menu-toggle').setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
   $('sidebar').inert = mobileViewport.matches && !open;
 }
-const views = {
-  overview: ['Overview', 'Account routing', 'Manage GitHub identities across repositories and agents.'],
-  routes: ['Folder routes', 'Folder routes', 'Assign the right GitHub identity to every workspace.'],
-  repositories: ['Repositories', 'Your repositories', 'Find your checkouts. Connect them to the right accounts.'],
-  agents: ['Agent setup', 'Agent setup', 'Launch agents with credentials scoped to their repository.'],
-};
+const views = { overview: 'Overview', routes: 'Folder routes', repositories: 'Repositories', agents: 'Agent setup' };
 function setView(view) {
   currentView = view;
-  $('breadcrumb-current').textContent = views[view][0];
-  $('page-title').textContent = views[view][1];
-  $('page-description').textContent = views[view][2];
+  $('page-title').textContent = views[view];
   document.querySelectorAll('.nav-item[data-view]').forEach(button => {
     const active = button.dataset.view === view;
     button.classList.toggle('active', active);
@@ -207,7 +200,7 @@ function renderAccounts() {
     card.append(top, bottom);
     $('accounts').append(card);
   });
-  if (!state.accounts.length) $('accounts').append(el('div', 'No stored accounts yet. Add an account with gh auth login.', 'loading-placeholder'));
+  if (!state.accounts.length) $('accounts').append(el('div', 'No accounts. Sign in with gh auth login.', 'loading-placeholder'));
 }
 function renderFilters() {
   const keys = new Set(state.accounts.map(identityKey).concat(state.mappings.map(identityKey)));
@@ -231,13 +224,7 @@ function renderMappings() {
     && `${mapping.path} ${mapping.account} ${mapping.host} ${mapping.repo || ''}`.toLowerCase().includes(query));
   $('mappings').replaceChildren();
   $('empty-mappings').hidden = !!mappings.length;
-  if (!state.mappings.length) {
-    $('empty-route-title').textContent = 'Your first route starts here.';
-    $('empty-route-description').textContent = 'Assign a repository or workspace to a GitHub account. Your agents will know which identity to use.';
-  } else {
-    $('empty-route-title').textContent = 'No matching routes.';
-    $('empty-route-description').textContent = 'Try another account or search term, or create a route for this account.';
-  }
+  $('empty-route-title').textContent = state.mappings.length ? 'No matching routes.' : 'No routes yet.';
   mappings.forEach(mapping => {
     const row = el('tr');
     const folder = el('td');
@@ -301,12 +288,14 @@ async function refresh() {
   const connected = state.accounts.filter(a => a.state === 'success').length;
   const hosts = [...new Set(state.accounts.map(a => a.host))];
   $('account-count').textContent = state.accounts.length;
-  $('account-summary').textContent = `${connected} connected${connected < state.accounts.length ? ` · ${state.accounts.length - connected} needs login` : ' · Ready for routing'}`;
+  $('account-summary').textContent = `${connected} connected${connected < state.accounts.length ? ` · ${state.accounts.length - connected} needs login` : ''}`;
+  const blocked = state.mappings.filter(m => !state.accounts.some(a => identityKey(a) === identityKey(m) && a.state === 'success')).length;
+  $('mapping-summary').textContent = blocked ? `${blocked} waiting on login` : 'All accounts connected';
   $('mapping-count').textContent = state.mappings.length;
   $('nav-route-count').textContent = state.mappings.length;
   $('route-title-count').textContent = state.mappings.length;
   $('host-count').textContent = hosts.length;
-  $('host-summary').textContent = hosts.join(' · ') || 'No hosts configured yet';
+  $('host-summary').textContent = hosts.join(' · ') || 'None';
   $('config-location').title = `Copy configuration path: ${configPath}`;
   const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   $('sync-status').textContent = demo ? `Browser-local demo · Updated ${time}` : `Last synced ${time}`;
@@ -338,7 +327,7 @@ async function refresh() {
 function openRoute(mapping = null) {
   if (!machineReady) { notice('Choose an available computer before creating a route.', true); return; }
   dialogReturnFocus = document.activeElement;
-  $('dialog-title').textContent = mapping ? 'Edit folder route' : 'Create a folder route';
+  $('dialog-title').textContent = mapping ? 'Edit route' : 'New route';
   $('folder').value = mapping ? mapping.path : '';
   $('folder').readOnly = !!mapping;
   $('route-target').value = mapping?.repo || '';
@@ -362,7 +351,7 @@ function renderRepositories(repositories) {
     const empty = el('div', undefined, 'empty-state');
     const illustration = el('span', undefined, 'empty-illustration');
     illustration.append(icon('folder'));
-    empty.append(illustration, el('h3', 'No repositories found.'), el('p', 'Try another workspace or scan a deeper subfolder.'));
+    empty.append(illustration, el('h3', 'No repositories found.'));
     $('repositories').append(empty);
   }
   for (const repo of repositories) {
@@ -458,8 +447,6 @@ async function copyText(text, button) {
 document.querySelectorAll('.nav-item[data-view]').forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
 mobileViewport.addEventListener('change', () => setMenu(false));
 document.querySelectorAll('[data-new-route]').forEach(button => button.addEventListener('click', () => openRoute()));
-$('discover-link').addEventListener('click', () => setView('repositories'));
-$('agent-link').addEventListener('click', () => setView('agents'));
 $('menu-toggle').addEventListener('click', () => setMenu($('sidebar-backdrop').hidden));
 $('sidebar-backdrop').addEventListener('click', () => { setMenu(false); $('menu-toggle').focus(); });
 $('theme-toggle').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
@@ -508,7 +495,7 @@ $('scan-form').addEventListener('submit', async (event) => {
   } catch (error) { notice(error.message, true); }
   finally {
     $('scan-button').disabled = false;
-    $('scan-button').querySelector('span').textContent = 'Scan workspace';
+    $('scan-button').querySelector('span').textContent = 'Scan';
   }
 });
 $('agent-route').addEventListener('change', updateLaunchCommand);

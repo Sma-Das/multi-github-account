@@ -15,7 +15,7 @@ for (const filename of ['index.html', 'style.css', 'app.js', 'favicon.svg']) {
     const replacements = [
       ['<title>GitHub account router</title>', '<title>GitHub account router · Interactive demo</title>\n  <meta name="description" content="Try GitHub account routing with sample accounts, repositories, and agents. No sign-in required.">'],
       ['  <script src="/app.js" defer></script>', '  <script src="/demo.js" defer></script>\n  <script src="/app.js" defer></script>'],
-      ['My workspace<span>Account routing</span>', 'Demo workspace<span>Sample accounts &amp; repos</span>'],
+      ['My workspace<span>Account routing</span>', 'Demo workspace<span>Sample accounts</span>'],
       ['Your credentials stay here.<span>Stored by GitHub CLI.</span>', 'Sample data only.<span>No GitHub sign-in required.</span>'],
       ['Scan a workspace to inspect upstream remotes and assign accounts.', 'Explore sample repositories and try assigning accounts.'],
       ['Local configuration<svg', 'Sample configuration<svg'],

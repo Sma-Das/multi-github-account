@@ -29,13 +29,14 @@
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 13A9 9 0 0 1 11 3.5 9 9 0 1 0 20.5 13Z"/></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5m0 3.5v.01"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
   </svg>
 
   <a href="#main" class="skip-link">Skip to dashboard</a>
   <button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="Close navigation" hidden></button>
   <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
-    <a class="brand" href="/" aria-label="GitHub account router home"><span class="brand-mark"><svg class="icon"><use href="#i-route"/></svg></span><span>ghr<span class="brand-subtitle">GitHub account router</span></span><span class="version">v0.3</span></a>
+    <a class="brand" href="/" aria-label="GitHub account router home"><span class="brand-mark"><svg class="icon"><use href="#i-route"/></svg></span><span class="brand-text"><span class="brand-name">ghr<span class="version">v0.3</span></span><span class="brand-subtitle">GitHub account router</span></span></a>
     <div class="workspace-label"><span class="workspace-icon">W</span><div>My workspace<span>Account routing</span></div><span class="workspace-dot"></span></div>
     <nav class="navigation" aria-label="Dashboard">
       <p class="nav-label">Workspace</p>
@@ -53,7 +54,7 @@
     <header class="topbar"><div class="breadcrumb"><button id="menu-toggle" class="icon-button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><span>Workspace</span><span class="breadcrumb-divider">/</span><span id="breadcrumb-current">Overview</span></div><div class="topbar-actions"><label class="machine-picker"><span class="sr-only">Active computer</span><select id="machine-select"><option value="local">This computer</option></select></label><button id="pair-machine" class="icon-button" aria-label="Pair a computer" title="Pair a computer"><svg class="icon"><use href="#i-plus"/></svg></button><span class="session-badge"><span class="status-dot"></span><span id="session-label">Private session</span></span><button id="refresh" class="icon-button" aria-label="Refresh accounts and routes" title="Refresh accounts and routes"><svg class="icon"><use href="#i-refresh"/></svg></button></div></header>
     <main id="main" tabindex="-1">
       <div class="page-heading"><div><p class="eyebrow">GitHub workspace</p><h1 id="page-title">Account routing</h1><p id="page-description">Manage GitHub identities across repositories and agents.</p></div><button class="button primary" data-new-route><svg class="icon"><use href="#i-plus"/></svg>New route<kbd>N</kbd></button></div>
-      <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="dismiss-notice" class="icon-button" aria-label="Dismiss notification"><svg class="icon"><use href="#i-close"/></svg></button></div>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden><svg class="icon notice-icon"><use id="notice-icon" href="#i-check"/></svg><span id="notice-text"></span><button id="dismiss-notice" class="icon-button" aria-label="Dismiss notification"><svg class="icon"><use href="#i-close"/></svg></button></div>
 
       <div id="view-overview" class="view">
         <div class="stats-grid overview-only" aria-label="Workspace summary"><div class="stat"><div class="stat-label">GitHub accounts<svg class="icon"><use href="#i-github"/></svg></div><div id="account-count" class="stat-value">—</div><p id="account-summary">Checking stored credentials</p></div><div class="stat"><div class="stat-label">Folder routes<svg class="icon"><use href="#i-route"/></svg></div><div id="mapping-count" class="stat-value">—</div><p>Repository and workspace mappings</p></div><div class="stat"><div class="stat-label">GitHub hosts<svg class="icon"><use href="#i-shield"/></svg></div><div id="host-count" class="stat-value">—</div><p id="host-summary">Hosts with stored accounts</p></div></div>

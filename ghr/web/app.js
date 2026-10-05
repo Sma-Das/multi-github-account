@@ -17,6 +17,7 @@ const mobileViewport = matchMedia('(max-width: 760px)');
 let currentMachine = 'local';
 let pendingWrites = 0;
 let machineReady = false;
+let noticeTimer = null;
 const initialRepositories = $('repositories').firstElementChild.cloneNode(true);
 
 function el(tag, text, cls) {
@@ -36,9 +37,13 @@ function icon(name) {
 }
 function notice(message, error = false) {
   if (!message) return;
+  clearTimeout(noticeTimer);
   $('notice-text').textContent = message;
+  $('notice-icon').setAttribute('href', error ? '#i-alert' : '#i-check');
   $('notice').classList.toggle('error', error);
   $('notice').hidden = false;
+  // Errors stay until dismissed; confirmations clear themselves.
+  if (!error) noticeTimer = setTimeout(() => { $('notice').hidden = true; }, 4000);
 }
 async function hubApi(path, options = {}) {
   if (demo) return demo.request(path, options);
@@ -116,8 +121,11 @@ function badge(text, kind = '') {
   node.append(document.createTextNode(text));
   return node;
 }
-function avatar(account, index = 0) {
-  return el('span', account.slice(0, 2).toUpperCase(), `avatar${index % 2 ? ' purple' : ''}`);
+function avatar(identity) {
+  const parts = identity.account.split(/[-_.]+/).filter(Boolean);
+  const initials = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : identity.account.slice(0, 2);
+  const index = state.accounts.findIndex(a => identityKey(a) === identityKey(identity));
+  return el('span', initials.toUpperCase(), `avatar${index >= 0 ? ` tone-${index % 5}` : ''}`);
 }
 function accountOptions(select, host) {
   const previous = select.value;
@@ -171,13 +179,13 @@ function setTheme(theme) {
 }
 function renderAccounts() {
   $('accounts').replaceChildren();
-  state.accounts.forEach((account, index) => {
+  state.accounts.forEach(account => {
     const count = state.mappings.filter(m => identityKey(m) === identityKey(account)).length;
     const card = el('article', undefined, 'account-card');
     const top = el('div', undefined, 'account-top');
     const info = el('div', undefined, 'account-info');
     info.append(el('h3', `@${account.account}`), el('p', account.host));
-    top.append(avatar(account.account, index), info,
+    top.append(avatar(account), info,
       badge(account.state === 'success' ? 'Connected' : 'Needs login', account.state === 'success' ? '' : 'warning'));
     const bottom = el('div', undefined, 'account-bottom');
     const summary = el('span');
@@ -238,13 +246,12 @@ function renderMappings() {
     const path = el('code', shortPath(mapping.path));
     path.title = mapping.path;
     info.append(el('strong', basename(mapping.path)), path);
-    info.append(el('code', mapping.repo ? `Remote: ${mapping.repo}` : 'Folder default', 'route-scope'));
+    info.append(el('span', mapping.repo ? `Remote · ${mapping.repo}` : 'Folder default', `route-scope${mapping.repo ? ' remote' : ''}`));
     content.append(icon('folder'), info);
     folder.append(content);
     const accountCell = el('td');
     const accountInfo = el('div', undefined, 'route-account');
-    const accountIndex = state.accounts.findIndex(a => identityKey(a) === identityKey(mapping));
-    accountInfo.append(avatar(mapping.account, Math.max(accountIndex, 0)), el('span', `@${mapping.account}`));
+    accountInfo.append(avatar(mapping), el('span', `@${mapping.account}`));
     accountCell.append(accountInfo);
     const status = el('td');
     const connected = state.accounts.some(a => identityKey(a) === identityKey(mapping) && a.state === 'success');
@@ -384,10 +391,17 @@ function renderRepositories(repositories) {
     const select = el('select');
     select.setAttribute('aria-label', `Account for ${repo.path}`);
     const hosts = [...new Set(repo.remotes.map(r => r.host))];
-    accountOptions(select, hosts.length === 1 ? hosts[0] : undefined);
+    const showAccounts = (host, account) => {
+      accountOptions(select, host);
+      const current = [...select.options].find(option => option.value
+        && JSON.parse(option.value).account === account && (!hosts.length || hosts.includes(JSON.parse(option.value).host)));
+      if (current) select.value = current.value;
+    };
+    showAccounts(hosts.length === 1 ? hosts[0] : undefined, repo.account);
     scope.addEventListener('change', () => {
       const target = scope.value ? JSON.parse(scope.value) : null;
-      accountOptions(select, target?.host || (hosts.length === 1 ? hosts[0] : undefined));
+      const remote = target && repo.remotes.find(r => r.host === target.host && r.repo === target.repo);
+      showAccounts(target?.host || (hosts.length === 1 ? hosts[0] : undefined), remote ? remote.account : repo.account);
     });
     const button = el('button', 'Save route', 'button secondary');
     button.addEventListener('click', async () => {
@@ -449,7 +463,7 @@ $('agent-link').addEventListener('click', () => setView('agents'));
 $('menu-toggle').addEventListener('click', () => setMenu($('sidebar-backdrop').hidden));
 $('sidebar-backdrop').addEventListener('click', () => { setMenu(false); $('menu-toggle').focus(); });
 $('theme-toggle').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
-$('dismiss-notice').addEventListener('click', () => { $('notice').hidden = true; });
+$('dismiss-notice').addEventListener('click', () => { clearTimeout(noticeTimer); $('notice').hidden = true; });
 $('route-search').addEventListener('input', renderMappings);
 $('close-dialog').addEventListener('click', closeRoute);
 $('cancel-dialog').addEventListener('click', closeRoute);

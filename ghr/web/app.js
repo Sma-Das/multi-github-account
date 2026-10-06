@@ -2,8 +2,7 @@ const demo = globalThis.GHR_DEMO || null;
 const fragment = demo ? '' : location.hash.slice(1);
 let session = /^[A-Za-z0-9_-]{43}$/.test(fragment) ? fragment : '';
 try {
-  if (session) sessionStorage.setItem('ghr-session', session);
-  else if (!demo) session = sessionStorage.getItem('ghr-session') || '';
+  if (!session && !demo) session = sessionStorage.getItem('ghr-session') || '';
 } catch { /* The launch URL still works when tab storage is unavailable. */ }
 history.replaceState(null, '', '/');
 const $ = (id) => document.getElementById(id);
@@ -49,11 +48,24 @@ async function hubApi(path, options = {}) {
   if (demo) return demo.request(path, options);
   const response = await fetch(path, {
     ...options,
-    headers: { Authorization: `Bearer ${session || ''}`, 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: { ...(session ? { Authorization: `Bearer ${session}` } : {}), 'Content-Type': 'application/json' },
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed.');
   return data;
+}
+async function connectBrowser() {
+  if (demo || !session) return;
+  try {
+    await hubApi('/api/session', { method: 'POST' });
+  } catch (error) {
+    // An expired legacy tab key must not block an already paired browser.
+    if (fragment) throw error;
+  } finally {
+    session = '';
+    try { sessionStorage.removeItem('ghr-session'); } catch { /* Cookies work without tab storage. */ }
+  }
 }
 async function api(path, options = {}) {
   const machine = currentMachine;
@@ -284,6 +296,7 @@ function renderAgentRoutes() {
 async function refresh() {
   const next = await api('/api/state');
   state = next;
+  if (currentMachine === 'local' && state.authentication === 'browser-session') $('session-label').textContent = 'Browser session';
   configPath = state.config;
   const connected = state.accounts.filter(a => a.state === 'success').length;
   const hosts = [...new Set(state.accounts.map(a => a.host))];
@@ -517,7 +530,7 @@ document.addEventListener('keydown', (event) => {
 });
 try { setTheme(localStorage.getItem('ghr-theme') === 'light' ? 'light' : 'dark'); }
 catch { setTheme('dark'); }
-$('session-label').textContent = demo ? 'Interactive demo' : location.hostname.endsWith('.ts.net') ? 'Tailnet session' : 'Local session';
+$('session-label').textContent = demo ? 'Interactive demo' : location.protocol === 'https:' ? 'Private session' : 'Local session';
 if (demo) {
   $('reset-demo').addEventListener('click', async () => {
     $('reset-demo').disabled = true;
@@ -555,4 +568,4 @@ $('machine-form').addEventListener('submit', async event => {
     $('machine-error').hidden = false;
   } finally { $('save-machine').disabled = false; }
 });
-refreshMachines().then(() => selectMachine('local')).catch(error => { $('sync-status').textContent = 'Could not connect'; notice(error.message, true); });
+connectBrowser().then(refreshMachines).then(() => selectMachine('local')).catch(error => { $('sync-status').textContent = 'Could not connect'; notice(error.message, true); });

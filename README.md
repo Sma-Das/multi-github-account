@@ -208,7 +208,7 @@ The dashboard opens on `http://127.0.0.1:8765`. It shows stored accounts and fol
 
 The route dialog has an optional `OWNER/REPO` field for remote-specific bindings. Repository scan cards let you choose the folder default or an individual remote target, and show each remote's assigned account.
 
-The server binds only to loopback. API requests require a random per-session bearer secret carried in the launch URL's fragment. The page removes the fragment and stores the dashboard session in that tab. The API rejects cross-origin requests and unexpected Host headers. GitHub tokens are never sent to the dashboard, written to its config, or returned by its account-list endpoint. No external scripts, styles, fonts, or analytics are loaded.
+The server binds only to loopback. Open its session URL once to pair a browser. The page exchanges the fragment secret for an HttpOnly, SameSite browser cookie, then uses that cookie for API requests. The plain dashboard URL works across tabs and browser restarts. Browser sessions expire after 30 days without use and renew when used. HTTPS cookies are Secure. The API rejects cross-origin requests and unexpected Host headers. GitHub tokens are never sent to the dashboard, written to its config, or returned by its account-list endpoint. No external scripts, styles, fonts, or analytics are loaded.
 
 Use `ghr ui --no-browser --port 8766` for another port, or `--port 0` for an available port. Stop with Ctrl-C. The dashboard session URL authorizes mapping changes on the hosting machine.
 
@@ -228,9 +228,9 @@ In another terminal on that same machine:
 tailscale serve --bg http://127.0.0.1:8765
 ```
 
-If Serve is disabled, Tailscale prints a link to enable it for your tailnet. Open the HTTPS session URL printed by `ghr ui` on your other device. Include its fragment, which contains the dashboard session secret. The other device must be connected to the tailnet and allowed to reach the hosting machine.
+If Serve is disabled, Tailscale prints a link to enable it for your tailnet. Open the full HTTPS session URL printed by `ghr ui` once in each browser, then bookmark the plain HTTPS URL. The other device must be connected to the tailnet and allowed to reach the hosting machine. Use `--persistent-session` so paired browsers remain connected after dashboard restarts; without it, a restart requires pairing again. Clearing cookies or using a new private browsing session also requires pairing.
 
-`--public-url` adds one exact trusted HTTPS origin and host. The backend still binds only to loopback, still checks its session secret, and does not trust arbitrary forwarded headers. Tailscale Serve limits network access to your tailnet.
+`--public-url` adds one exact trusted HTTPS origin and host. The backend still binds only to loopback and requires a valid bearer secret or browser cookie. Browser writes require the exact dashboard origin. Cookies are signed by the dashboard session key and scoped to their origin; rotating the key invalidates them. The backend does not trust arbitrary forwarded headers. Tailscale Serve limits network access to your tailnet.
 
 Stop this Serve endpoint with `tailscale serve --https=443 off`. Mapping changes apply to folders and accounts on the hosting machine.
 

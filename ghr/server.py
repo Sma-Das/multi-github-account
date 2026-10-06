@@ -1,12 +1,16 @@
 """Loopback-only dashboard. The browser never receives GitHub credentials."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import CookieError, SimpleCookie
 import fcntl
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import secrets
 import socket
+import time
 from urllib.parse import parse_qs, urlsplit
 import webbrowser
 
@@ -14,6 +18,8 @@ from .core import (RouterError, accounts, add_mapping, config_path, read_config,
                    remove_mapping, scan, validate_identity)
 from . import __version__
 from .machines import add_machine, list_machines, remote_request, remove_machine
+
+BROWSER_SESSION_SECONDS = 30 * 24 * 60 * 60
 
 
 def trusted_origin(public_url):
@@ -67,6 +73,13 @@ def make_server(port=8765, public_url=None, persistent=False):
     session = session_secret(persistent)
     assets = Path(__file__).parent / "web"
 
+    def cookie_name(origin):
+        # Cookies have no port boundary. Scope loopback dashboards by their origin.
+        return "ghr_browser_" + hashlib.sha256(origin.encode()).hexdigest()[:12]
+
+    def cookie_signature(origin, expires):
+        return hmac.new(session.encode(), f"browser-session\n{origin}\n{expires}".encode(), hashlib.sha256).hexdigest()
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # Never log the dashboard's session URL or request contents.
@@ -80,6 +93,19 @@ def make_server(port=8765, public_url=None, persistent=False):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            if getattr(self, "remember_browser", False):
+                expires = str(int(time.time()) + BROWSER_SESSION_SECONDS)
+                origin = self.browser_origin
+                cookie = SimpleCookie()
+                name = cookie_name(origin)
+                cookie[name] = expires + "." + cookie_signature(origin, expires)
+                cookie[name]["path"] = "/"
+                cookie[name]["max-age"] = BROWSER_SESSION_SECONDS
+                cookie[name]["httponly"] = True
+                cookie[name]["samesite"] = "Strict"
+                if origin.startswith("https://"):
+                    cookie[name]["secure"] = True
+                self.send_header("Set-Cookie", cookie[name].OutputString())
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             self.end_headers()
             self.wfile.write(body)
@@ -94,15 +120,38 @@ def make_server(port=8765, public_url=None, persistent=False):
             if self.headers.get("Host", "").lower() not in allowed_hosts:
                 self.respond(403, {"error": "Invalid dashboard host."})
                 return False
+            self.browser_origin = public_origin if self.headers.get("Host", "").lower() != host else f"http://{host}"
             origin = self.headers.get("Origin")
             if origin is not None and origin not in allowed_origins:
                 self.respond(403, {"error": "Cross-origin requests are not allowed."})
                 return False
             supplied = self.headers.get("Authorization", "")
-            if not secrets.compare_digest(supplied.encode(), ("Bearer " + session).encode()):
+            if secrets.compare_digest(supplied.encode(), ("Bearer " + session).encode()):
+                self.authentication = "session"
+                return True
+            # An explicit invalid bearer must never fall back to ambient cookies.
+            if supplied:
                 self.respond(401, {"error": "Open the session URL printed by ghr ui."})
                 return False
-            return True
+            try:
+                cookies = SimpleCookie(self.headers.get("Cookie", ""))
+                value = cookies[cookie_name(self.browser_origin)].value
+                expires, signature = value.split(".", 1)
+                valid = (expires.isascii() and expires.isdigit() and len(expires) <= 12
+                         and int(expires) > time.time()
+                         and hmac.compare_digest(signature.encode(), cookie_signature(self.browser_origin, expires).encode()))
+            except (CookieError, KeyError, ValueError):
+                valid = False
+            if valid:
+                if (self.headers.get("Sec-Fetch-Site") == "cross-site"
+                        or (self.command != "GET" and origin != self.browser_origin)):
+                    self.respond(403, {"error": "Browser requests must come from the dashboard origin."})
+                    return False
+                self.authentication = "browser-session"
+                self.remember_browser = True
+                return True
+            self.respond(401, {"error": "Connect this browser once using the session URL printed by ghr ui. It will be remembered for future visits."})
+            return False
 
         def do_GET(self):
             url = urlsplit(self.path)
@@ -113,7 +162,8 @@ def make_server(port=8765, public_url=None, persistent=False):
                     if url.path == "/api/state":
                         self.respond(200, {"accounts": accounts(), "mappings": read_config()["mappings"],
                                            "config": str(config_path()), "home": str(Path.home()),
-                                           "version": __version__, "machine": {"hostname": socket.gethostname()}})
+                                           "version": __version__, "machine": {"hostname": socket.gethostname()},
+                                           "authentication": self.authentication})
                     elif url.path == "/api/machines":
                         self.respond(200, {"machines": list_machines()})
                     elif url.path.startswith("/api/machines/"):
@@ -193,6 +243,18 @@ def make_server(port=8765, public_url=None, persistent=False):
 
         def do_DELETE(self):
             self.mutate(remove=True)
+
+        def do_POST(self):
+            if urlsplit(self.path).path != "/api/session":
+                self.respond(404, {"error": "Unknown endpoint."})
+                return
+            if not self.authorized():
+                return
+            if self.headers.get("Origin") != self.browser_origin:
+                self.respond(403, {"error": "Browser pairing must come from the dashboard origin."})
+                return
+            self.remember_browser = True
+            self.respond(200, {"connected": True})
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     server.daemon_threads = True
